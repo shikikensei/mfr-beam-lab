@@ -121,15 +121,23 @@ function current(): { box: BoxRecord; step: PlanStep; k: number } {
   const box = sim.boxes[lo], k = Math.min(st.g - box.gsBase, box.steps.length - 1);
   return { box, step: box.steps[k], k };
 }
+/** The benefit hills to draw for the two-slope view: the window's requests, dimmed once they are left out. */
+function hillsOf(box: BoxRecord, k: number): { ids: number[]; out: Set<number> } | null {
+  const first = box.steps[0];
+  if (first.kind !== 'tsbfCollect') return null;
+  const sel = box.steps[1];
+  return { ids: first.cands, out: new Set(k >= 1 && sel.kind === 'tsbfSelect' ? sel.out.map((o) => o.id) : []) };
+}
 function drawStage(): void {
   const sim = st.sim;
   if (!sim) return;
   const { box, step, k } = current(), bi = sim.boxes.indexOf(box), last = k === box.steps.length - 1;
-  const cursor: Us = sim.config.scheduler === 'legacy' ? (last ? box.end : box.start)
+  const windowed = sim.config.scheduler !== 'drsi';
+  const cursor: Us = windowed ? (last ? box.end : box.start)
     : Math.max(box.start, ...sim.timeline.filter((x) => x.box === bi && x.gs <= st.g).map((x) => x.start + x.len));
   drawTimeline($<HTMLCanvasElement>('cv'), { sim, x0: st.hand ? -HAND_BACK : box.start - BACK, span: st.hand ? HAND_SPAN : SPAN, targets: sim.scenario.targets.map((_, i) => i),
-    seen: { gs: st.g }, cursor, regions: true, box: { rec: box, k }, boxRow: true });
-  const phases = PHASES[sim.config.scheduler === 'legacy' ? 'legacy' : 'drsi'], on = phaseOf(step), cap = describe(sim, step, box);
+    seen: { gs: st.g }, cursor, regions: true, box: { rec: box, k }, boxRow: true, hills: hillsOf(box, k) });
+  const phases = PHASES[sim.config.scheduler === 'legacy' ? 'legacy' : sim.config.scheduler === 'tsbf' ? 'tsbf' : 'drsi'], on = phaseOf(step), cap = describe(sim, step, box);
   const row = (label: string, lines: string[]): string => (lines.length ? `<dt>${label}</dt><dd>${lines.join('<br>')}</dd>` : '');
   $('caption').innerHTML = `<ol class="phases">${phases.map((p, i) => `<li${i === on ? ' aria-current="step"' : ''}>${'①②③④'[i]} ${p}</li>`).join('')}</ol>` +
     `<dl class="cap">${row('何をした', cap.did)}${row('なぜ', cap.why)}${row('結果', cap.result)}</dl>`;
@@ -140,7 +148,7 @@ function stop(): void { clearInterval(st.timer); st.timer = 0; $('play').textCon
 function go(n: number): void { st.g = Math.max(0, Math.min(st.sim!.steps - 1, n)); drawStage(); }
 
 function compare(): void {
-  const sc = scenario(), ids = Object.keys(METHODS) as MethodId[];
+  const sc = scenario(), ids: MethodId[] = ['plus', 'paper', 'legacy'];
   const rows = ids.map((id) => summarize(simulate(sc, { ...configOf(id, fillMode()), trace: false })));
   const pc = (x: number): string => (x * 100).toFixed(1) + ' %';
   const line = (label: string, f: (s: (typeof rows)[number]) => string): string => `<tr><td>${label}</td>${rows.map((s) => `<td>${f(s)}</td>`).join('')}</tr>`;
@@ -156,14 +164,16 @@ function compare(): void {
 function rebuild(at: Us | null = null, pick: ((sim: SimResult) => BoxRecord | undefined) | null = null): void {
   stop();
   $('nOut').textContent = $<HTMLInputElement>('n').value;
-  const sim = st.sim = simulate(scenario(), { ...configOf(st.method, st.ext ? 'pace' : fillMode()), conv: st.ext?.conv });
+  const sim = st.sim = simulate(scenario(), { ...configOf(st.method, st.ext ? 'pace' : fillMode()), conv: st.ext?.conv, tsbfWindow: ms(st.ext?.win ?? 100) });
   $('fromLab').hidden = !st.ext;
   if (st.ext) $('fromLabText').textContent = `${st.ext.label}を表示しています（目標 ${st.ext.sc.targets.length}）。`;
   $<HTMLElement>('stage').querySelector('details')!.hidden = !!st.ext;
   $<HTMLInputElement>('step').max = String(sim.steps - 1);
   $('methods').querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.method === st.method)));
-  $('lgTentative').hidden = st.method === 'legacy'; // the legacy scheduler has no tentative placement
-  const typical = (b: BoxRecord): boolean => b.start >= ms(1200) && (sim.config.scheduler === 'legacy' || (b.steps[0].kind === 'select' && b.steps[0].nft !== null));
+  $('lgTentative').hidden = st.method === 'legacy' || st.method === 'tsbf'; // only the dynamic RSI places tentatively
+  $('lgHill').hidden = st.method !== 'tsbf';
+  $('tsbfNote').hidden = st.method !== 'tsbf';
+  const typical = (b: BoxRecord): boolean => b.start >= ms(1200) && (sim.config.scheduler === 'legacy' || (b.steps[0].kind === 'tsbfCollect' && b.steps[0].cands.length >= 2) || (b.steps[0].kind === 'select' && b.steps[0].nft !== null));
   const box = pick?.(sim) ?? (at !== null ? [...sim.boxes].reverse().find((b) => b.start <= at) : sim.boxes.find(typical));
   go(box ? box.gsBase : 0);
   compare();
@@ -183,7 +193,7 @@ $('n').addEventListener('input', () => { leaveHand(); rebuild(); });
 $('toSlow').addEventListener('click', () => {
   const v = labView();
   leaveHand(); st.ext = v;
-  st.method = v.method === 'paper' || v.method === 'legacy' ? v.method : 'plus';
+  st.method = v.method === 'paper' || v.method === 'legacy' || v.method === 'tsbf' ? v.method : 'plus';
   showChapter(1, false); showPart(3);
   rebuild(v.at, (sim) => sim.boxes.find((b) => b.end > v.at));
   $('stage').scrollIntoView({ block: 'start' });
@@ -285,7 +295,7 @@ function showPart(p: number, scroll = false): void {
   $('partNext').textContent = p < 5 ? `次へ：${PART_NAMES[p + 1]} ▶` : '次の章へ ▶';
   // part 5 starts from the dynamic RSI again, not from the legacy view left over from part 4
   if (p === 5 && st.method === 'legacy' && st.sim && !st.hand) { const at = current().box.start; st.method = 'plus'; rebuild(at); }
-  if (p === 4 && st.method !== 'legacy' && st.sim) { const at = current().box.start; st.method = 'legacy'; rebuild(at); }
+  if (p === 4 && st.method !== 'legacy') { const at = st.sim ? current().box.start : null; st.method = 'legacy'; if (st.sim) rebuild(at); }
   if (scroll) $('parts').scrollIntoView({ block: 'start' });
   const tab = $('parts').querySelector<HTMLElement>(`[data-part="${p}"]`);
   if (tab) $('parts').scrollLeft = tab.offsetLeft - $('parts').offsetLeft - 16;

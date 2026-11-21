@@ -98,6 +98,14 @@ export const planTsbf: Planner = (v: PlanView): Box => {
     if (placed.has(r.id) || r.latest >= end) continue;
     dropped.push({ req: r, reason: r.latest > end - r.len ? 'boundary' : 'conflict' });
   }
+  const fate = new Map(dropped.map((d) => [d.req.id, d.reason]));
+  const steps: Box['steps'] = [
+    { kind: 'tsbfCollect', shown: 0, end, cands: reqs.map((r) => r.id) },
+    { kind: 'tsbfSelect', shown: 0, kept: chosen.map((r) => r.id), out: reqs.filter((r) => !placed.has(r.id)).map((r) => ({ id: r.id, fate: fate.get(r.id) ?? 'carry' })) },
+    { kind: 'tsbfAssign', shown: chosen.length, starts: chosen.map((r, i) => ({ id: r.id, start: starts[i] })) },
+  ];
+  {
+  }
 
   // Search fills the openings. Each region has one pending look; e = time since its last look.
   // Regions whose e has reached their threshold w come first (smaller w first, then larger e),
@@ -147,5 +155,7 @@ export const planTsbf: Planner = (v: PlanView): Box => {
   const nFixed = items.length;
   for (let i = 0; i < nFixed; i++) { const p = items[i]; fill(p.start); c = p.start + p.len; }
   fill(end);
-  return { start: t, end, items, returned: [], dropped, steps: [{ kind: 'pick', shown: items.length }] };
+  const sum = (type: 'gap' | 'spare'): Us => items.reduce((a, x) => a + (x.type === type ? x.len : 0), 0);
+  steps.push({ kind: 'tsbfFill', shown: items.length, placed: v.regions.map((_, i) => items.filter((x) => x.type === 'flex' && x.region === i).length), gap: sum('gap'), spare: sum('spare') });
+  return { start: t, end, items, returned: [], dropped, steps };
 };

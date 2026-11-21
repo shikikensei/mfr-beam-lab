@@ -10,6 +10,7 @@ export const METHODS = {
   plus: { label: '動的RSI＋先読み', note: '本ツールの拡張', scheduler: 'drsi', protect: 'followers' },
   paper: { label: '動的RSI', note: '論文の記述どおり', scheduler: 'drsi', protect: 'paper' },
   legacy: { label: '従来型', note: '固定長の箱', scheduler: 'legacy', protect: 'paper' },
+  tsbf: { label: '2勾配ベネフィット', note: '原文未確認の要約', scheduler: 'tsbf', protect: 'paper' },
 } as const;
 export type MethodId = keyof typeof METHODS;
 
@@ -31,14 +32,15 @@ export const labOf = (id: string) => LAB.find((m) => m.id === id) ?? LAB[LAB.len
 export const PHASES = {
   drsi: ['次の固定タスクを選ぶ', '捜索の不足量を計算', '箱を捜索で詰める', '固定タスクを寄せて実行'],
   legacy: ['固定長の箱を用意', '固定タスクを優先度順に置く', '残りを捜索で埋める'],
+  tsbf: ['窓の要求を集める', '選別する', '開始時刻を一括で決める', '隙間を捜索で埋める'],
 };
 /** Which phase chip a step lights up (-1: none). */
 export function phaseOf(step: PlanStep): number {
   switch (step.kind) {
-    case 'select': case 'legacyBox': return 0;
-    case 'deficit': case 'legacyFixed': return 1;
-    case 'fill': case 'legacyFill': return 2;
-    case 'close': case 'chain': return 3;
+    case 'select': case 'legacyBox': case 'tsbfCollect': return 0;
+    case 'deficit': case 'legacyFixed': case 'tsbfSelect': return 1;
+    case 'fill': case 'legacyFill': case 'tsbfAssign': return 2;
+    case 'close': case 'chain': case 'tsbfFill': return 3;
     default: return -1;
   }
 }
@@ -136,6 +138,49 @@ export function describe(sim: SimResult, step: PlanStep, box: BoxRecord): Captio
       did.push('残りを捜索で埋めた：' + step.placed.map((n, i) => `${names[i]} ${n}本`).join('、') + '。');
       why.push('優先度の高い領域から順に。固定タスクは動かさない。');
       if (step.gap) result.push(`${msTxt(step.gap)} は捜索が入らず、隙間になった。`);
+      if (step.spare) result.push(`${msTxt(step.spare)} は頼むものがなく、余裕として空いた。`);
+      if (!step.gap && !step.spare) result.push('空きは残らなかった。');
+      break;
+    case 'tsbfCollect': {
+      did.push(`${sec(box.start)}〜${sec(step.end)} の窓に入る要求を集めた：${step.cands.length} 件。`);
+      why.push('この並べ方は、決まった長さの窓ごとに、固定タスクの照射をまとめて並べる。希望時刻（要求時刻）がこの窓の終わりより前の要求が対象。');
+      if (step.cands.length) {
+        result.push('希望時刻の順：' + step.cands.slice(0, 5).map((id) => reqName(sim, R[id])).join('、') + (step.cands.length > 5 ? ` ほか ${step.cands.length - 5} 件` : '') + '。');
+        result.push('それぞれの山は、希望時刻で最大、前後にずれるほど下がるベネフィット。山の高さは優先順位で決めている。');
+      } else result.push('この窓には固定タスクがない。');
+      break;
+    }
+    case 'tsbfSelect': {
+      if (!step.kept.length && !step.out.length) { did.push('選別するものはなかった。'); break; }
+      if (!step.out.length) {
+        did.push(`${step.kept.length} 件すべてを採用した。`);
+        why.push('希望時刻の順に、できるだけ早く並べていっても、全部が許容範囲に収まる。');
+        break;
+      }
+      did.push(`${step.kept.length} 件を採用し、${step.out.length} 件を外した。`);
+      why.push('山の高い順に1件ずつ加え、加えると全部は収まらなくなるものを外す。照射は窓の境界をまたげない。');
+      const FATE = { carry: '次の窓へ持ち越し（許容範囲が次の窓に届く）', boundary: '取りこぼし（窓の境界をまたげない）', conflict: '取りこぼし（山の高い照射に場所を譲った）', timeout: '取りこぼし' } as const;
+      for (const o of step.out.slice(0, 5)) result.push(`${reqName(sim, R[o.id])}：${FATE[o.fate]}。`);
+      if (step.out.length > 5) result.push(`ほか ${step.out.length - 5} 件。`);
+      break;
+    }
+    case 'tsbfAssign': {
+      if (!step.starts.length) { did.push('置く照射はなかった。'); break; }
+      did.push(`採用した ${step.starts.length} 件の開始時刻を、まとめて決めた。`);
+      why.push('山の高さの合計がいちばん大きくなる置き方を選ぶ。順番は希望時刻の順のまま、重ならないようにずらす。');
+      for (const x of step.starts.slice(0, 5)) {
+        const q = R[x.id], d = x.start - q.req;
+        const done = q.status === 'done' && q.start === x.start;
+        result.push(`${reqName(sim, q)}：${Math.abs(d) < 500 ? '希望どおり' : `希望より ${msTxt(Math.abs(d))} ${d < 0 ? '早く' : '遅く'}`}、${sec(x.start)}${done ? `。${outcome(q)}` : ''}。`);
+      }
+      if (step.starts.length > 5) result.push(`ほか ${step.starts.length - 5} 件。`);
+      break;
+    }
+    case 'tsbfFill':
+      if (step.placed.some((n) => n > 0)) did.push('残った空きを捜索で埋めた：' + step.placed.map((n, i) => `${names[i]} ${n}本`).filter((_, i) => step.placed[i] > 0).join('、') + '。');
+      else did.push('捜索は入れなかった。');
+      why.push(sim.config.fill === 'full' ? '入るだけ詰める。順番は、前回からの経過時間が長い領域から。' : '打ってよいのは、所望のペースより遅れている領域だけ（全方式共通の判定）。順番は、前回からの経過時間が長い領域から。');
+      if (step.gap) result.push(`${msTxt(step.gap)} は捜索が入らず、隙間になった。固定タスクは動かさないので、あいだに細切れが残る。`);
       if (step.spare) result.push(`${msTxt(step.spare)} は頼むものがなく、余裕として空いた。`);
       if (!step.gap && !step.spare) result.push('空きは残らなかった。');
       break;

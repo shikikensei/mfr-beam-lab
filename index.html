@@ -112,6 +112,7 @@
       <h2>③ 箱の組み立て</h2>
       <p>動的RSIは、次の固定タスクまでを1つの「箱」にして、4手で組み立てます。①次の固定タスクを選んで、いちばん遅い位置に仮置きする。②捜索の不足量を計算する。③箱を捜索で前から詰める。④固定タスクを前に寄せて、空きを閉じる。</p>
       <p class="note">既定の「＋先読み」は本ツールの拡張で、①の仮置きで後ろに待つ固定タスクの場所も確保します。「論文の記述どおり」に切り替えると、その処理を外した動きになります。</p>
+      <p class="note">「2勾配ベネフィット」に切り替えると、別の考え方の並べ方を同じ場面で見られます。窓の要求を集める → 選別する → 開始時刻を一括で決める → 隙間を捜索で埋める、の4手です（原文未確認の要約に基づく実装）。</p>
     </div>
     <div class="card part" data-part="4">
       <h2>④ 従来型と比べる</h2>
@@ -141,9 +142,11 @@
         <span><i class="box" style="background:var(--s-urgent)"></i>緊急</span>
         <span><i class="box" style="border:1px solid var(--ink2)"></i>許容範囲（縦線が要求時刻）</span>
         <span id="lgTentative"><i class="box" style="border:1px dashed var(--s-track)"></i>仮置き</span>
+        <span id="lgHill" hidden><svg width="18" height="11" viewBox="0 0 18 11" aria-hidden="true"><path d="M1 10L1 7L9 1L17 7L17 10Z" fill="var(--s-track)" fill-opacity=".3" stroke="var(--s-track)"/></svg>ベネフィットの山（頂上が希望時刻）</span>
         <span><i class="box" style="background:var(--over)"></i>隙間</span>
         <span><b class="x">✕</b> 外れ・取りこぼし</span>
       </div>
+      <p class="note" id="tsbfNote" hidden><b>原文未確認の要約に基づく実装です。</b>山の形は模式図です。高さは本ツールが優先順位から置いたピーク、傾きは全照射で共通にしています。破線の薄い山は、選別で外れた要求です。</p>
       <canvas id="cv" role="img" aria-label="目標ごとの要求と照射、捜索、箱の組み立てを示すタイムライン"></canvas>
       <div id="caption" aria-live="polite"></div>
       <div class="player">

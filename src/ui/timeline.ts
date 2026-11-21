@@ -17,6 +17,8 @@ export interface TimelineView {
   /** The box being assembled and the step inside it; omit to hide the box row. */
   box?: { rec: BoxRecord; k: number } | null;
   boxRow: boolean;
+  /** Two-slope benefit view: draw the benefit hill of these requests; `out` are the ones not selected. */
+  hills?: { ids: number[]; out: Set<number> } | null;
 }
 
 const css = (n: string): string => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -24,7 +26,7 @@ const css = (n: string): string => getComputedStyle(document.documentElement).ge
 export function drawTimeline(cv: HTMLCanvasElement, v: TimelineView): void {
   const { sim } = v, dpr = window.devicePixelRatio || 1;
   const T = v.targets.length, NR = v.regions ? sim.scenario.regions.length : 0;
-  const L = 50, Rm = 6, lh = T > 14 ? 15 : T <= 2 ? 30 : 20, top = 4, boxH = 40;
+  const L = 50, Rm = 6, lh = T > 14 ? 15 : T <= 2 ? 30 : v.hills && T <= 10 ? 26 : 20, top = 4, boxH = 40;
   const yPat = top + T * lh + (NR ? 8 : 0), yBox = yPat + NR * 16 + (v.boxRow ? 10 : 0), yEnd = yBox + (v.boxRow ? boxH : 0), H = yEnd + 22;
   const W = cv.clientWidth;
   if (!W) return;
@@ -62,6 +64,22 @@ export function drawTimeline(cv: HTMLCanvasElement, v: TimelineView): void {
     c.beginPath(); c.moveTo(X(q.req), y + 1); c.lineTo(X(q.req), y + lh - 1); c.stroke();
     if (!open && q.status === 'dropped') { c.fillStyle = C.crit; c.font = '700 12px ' + font; c.textAlign = 'center'; c.fillText('✕', X(q.req), y + lh - 5); }
   }
+  if (v.hills) {
+    // Schematic hill: apex at the desired start, height by peak benefit, the same slope for all.
+    const drop = (lh - 6) / ms(60); // px per time unit
+    for (const id of v.hills.ids) {
+      const q = sim.requests[id], y0 = q.target < 0 ? null : yOf(q.target);
+      if (y0 === null) continue;
+      const base = y0 + lh - 3, top = (lh - 6) * (0.45 + 0.55 * (1 - q.rank / 4));
+      const h = (t: Us): number => Math.max(0, top - Math.abs(t - q.req) * drop);
+      const out = v.hills.out.has(id);
+      c.beginPath(); c.moveTo(X(q.earliest), base); c.lineTo(X(q.earliest), base - h(q.earliest)); c.lineTo(X(q.req), base - top);
+      c.lineTo(X(q.latest), base - h(q.latest)); c.lineTo(X(q.latest), base); c.closePath();
+      c.globalAlpha = out ? 0.12 : 0.3; c.fillStyle = colour(q.kind); c.fill();
+      c.globalAlpha = out ? 0.45 : 1; c.strokeStyle = colour(q.kind); c.lineWidth = 1.2; c.setLineDash(out ? [3, 2] : []); c.stroke(); c.setLineDash([]);
+      c.globalAlpha = 1;
+    }
+  }
   for (const e of sim.timeline) {
     if (!seenAt(e.gs, e.start) || e.start + e.len < v.x0 || e.start > v.x0 + v.span) continue;
     const xa = X(e.start), w = Math.max(X(e.start + e.len) - xa - 0.6, 1);
@@ -89,7 +107,7 @@ export function drawTimeline(cv: HTMLCanvasElement, v: TimelineView): void {
     const cur = v.box?.rec ?? null, k = v.box?.k ?? 0;
     const sel = cur?.steps[0];
     const planned = !cur || !sel ? 0 : sel.kind === 'select' && sel.nft !== null ? sel.limit + sim.requests[sel.nft].len : sel.kind === 'select' ? sel.limit : cur.end;
-    const closed = (b: BoxRecord): boolean => b !== cur || b.steps.slice(0, k + 1).some((s) => s.kind === 'close' || s.kind === 'legacyFill' || s.kind === 'interrupt');
+    const closed = (b: BoxRecord): boolean => b !== cur || b.steps.slice(0, k + 1).some((s) => s.kind === 'close' || s.kind === 'legacyFill' || s.kind === 'tsbfFill' || s.kind === 'interrupt');
     for (const b of sim.boxes) {
       if (!seenAt(b.gsBase, b.start) || b.end < v.x0) continue;
       const fin = closed(b), end = b !== cur ? b.end : fin ? Math.max(v.cursor, b.start + 1) : planned;

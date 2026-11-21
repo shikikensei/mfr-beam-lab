@@ -146,6 +146,11 @@ export type PlanStep = { shown: number } & (
   | { kind: 'legacyFixed'; placed: number[]; carried: number[]; dropped: { id: number; reason: DropReason }[] }
   | { kind: 'legacyFill'; placed: number[]; gap: Us; spare: Us }
   | { kind: 'interrupt'; at: Us; removed: number[] }
+  /** Two-slope benefit scheduler: collect the looks of the window, select, assign all start times at once, fill. */
+  | { kind: 'tsbfCollect'; end: Us; cands: number[] }
+  | { kind: 'tsbfSelect'; kept: number[]; out: { id: number; fate: 'carry' | DropReason }[] }
+  | { kind: 'tsbfAssign'; starts: { id: number; start: Us }[] }
+  | { kind: 'tsbfFill'; placed: number[]; gap: Us; spare: Us }
   /** One-dwell-at-a-time schedulers: the single decision of this call. */
   | { kind: 'pick' }
 );
