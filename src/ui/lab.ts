@@ -194,7 +194,6 @@ function stats(id: LabId, keep = state.keep): Stats {
   }
   return toStats([run(id, keep).sum], want);
 }
-const short = (label: string): string => label.replace(/（(.+)）$/, '<small>$1</small>');
 const dotName = (label: string): string => label.replace(/（.+）$/, '').replace('動的RSI＋先読み', '＋先読み').replace('固定テンプレート', 'テンプレート').replace('最早期限優先', '最早期限').replace('2勾配ベネフィット', '2勾配').replace('固定優先度＋インターリーブ', 'インターリーブ');
 /** The scatter chart, its reading and the table. Redrawn on its own when the background seeds arrive. */
 function drawScore(): void {
@@ -204,9 +203,10 @@ function drawScore(): void {
     all.map(({ m, now: s }) => {
       const tag = m.id === state.a ? 'A ' : m.id === state.b ? 'B ' : '', n0 = (x: number): string => x.toFixed(0);
       const range = (v: Spread): string => (waiting ? '' : `<small>${n0(v.min)}〜${n0(v.max)}</small>`);
-      return `<tr><td>${tag ? `<b>${tag}</b>` : ''}${short(m.label)}</td><td>${n0(s.search.mean)} %<small>${n0(s.hi)}／${n0(s.lo)}</small></td>` +
+      return `<tr><td>${tag ? `<b>${tag}</b>` : ''}${dotName(m.label)}</td><td>${n0(s.search.mean)} %<small>${n0(s.hi)}／${n0(s.lo)}</small></td>` +
         `<td>${s.gap.toFixed(1)} %</td><td>${n0(s.drop.mean)}${range(s.drop)}</td><td>${n0(s.upper.mean)}${range(s.upper)}</td></tr>`;
     }).join('') + '</tbody>';
+  $('scoreNames').textContent = '名前は短くしています。' + LAB.filter((m) => dotName(m.label) !== m.label).map((m) => `${dotName(m.label)}＝${m.label}`).join('、') + '。';
   $('scoreState').textContent = waiting ? '計算中です。いまは乱数1種の結果で、すぐに4種の平均と幅に置き換わります。'
     : `60秒間の合計を、乱数を変えた4回（種 ${state.seed}〜${state.seed + 3}）で平均した値です。小さい字は、捜索が水平線／上空、取りこぼしが4回の最小〜最大です。`;
   const groups = scatterChart($('scatter'), {

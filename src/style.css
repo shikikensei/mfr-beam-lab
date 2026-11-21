@@ -158,12 +158,12 @@ details .check{margin-top:10px}
 .hand button[aria-pressed="true"]{background:var(--accent);color:var(--surface);border-color:var(--accent)}
 #swRead{line-height:1.7}
 #score th{white-space:nowrap;font-size:11.5px}
-#score td:first-child{font-size:13px}
+#score td:first-child{font-size:12px}
 #score td+td{white-space:nowrap}
 .wip{font-size:13px;color:var(--ink2);border:1px solid var(--axis);border-radius:8px;padding:8px 12px;margin:0 0 4px}
 .wip b{display:inline-block;font-size:12px;font-weight:700;color:var(--surface);background:var(--ink2);border-radius:4px;padding:0 6px;margin-right:8px}
 #score{table-layout:fixed}
-#score th:nth-child(1){width:27%}#score th:nth-child(2){width:17%}#score th:nth-child(3){width:15%}#score th:nth-child(4){width:22%}#score th:nth-child(5){width:19%}
+#score th:nth-child(1){width:30%}#score th:nth-child(2){width:15%}#score th:nth-child(3){width:15%}#score th:nth-child(4){width:21%}#score th:nth-child(5){width:19%}
 #score small{font-size:10.5px}
 #score td+td{font-size:13px}
 #cmp thead th{white-space:nowrap;vertical-align:bottom}
@@ -223,6 +223,9 @@ details.sec>ul.plain{padding-left:1.2em}
 details.sec h3{margin:6px 16px 8px}
 #farCurve svg{display:block}
 .seg button:last-child:nth-child(odd){grid-column:1/-1;border-left:0}
-@media (min-width:700px){.seg{grid-template-columns:repeat(5,1fr)}.seg button:last-child:nth-child(odd){grid-column:auto;border-left:1px solid var(--axis)}}
+@media (min-width:700px){.seg{grid-template-columns:repeat(4,1fr) max-content}.seg button{padding:7px 10px}#score td:first-child{font-size:13.5px}.seg button:last-child:nth-child(odd){grid-column:auto;border-left:1px solid var(--axis)}}
 details.sec{gap:0}
 details.sec>summary{padding-bottom:14px}
+
+.card>details:only-child{border-top:0;padding-top:0}
+details.fine:not([open]){gap:0}

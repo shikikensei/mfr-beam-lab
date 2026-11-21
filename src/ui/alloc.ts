@@ -11,16 +11,16 @@ let wired = false;
 
 /** One small chart per kind of task: every setting, the hull, and where the tasks of that kind ended up. */
 function curve(host: HTMLElement, task: QTask, chosen: Map<Setpoint, number>): void {
-  const W = host.clientWidth || 300, H = 132, m = { l: 34, r: 14, t: 10, b: 28 };
+  const W = host.clientWidth || 300, H = 140, m = { l: 34, r: 14, t: 10, b: 36 };
   const h = hull(task.points), rmax = Math.max(...task.points.map((p) => p.r)) * 1.08, umax = Math.max(...task.points.map((p) => p.u)) * 1.12;
   const X = (r: number): number => m.l + (r / rmax) * (W - m.l - m.r), Y = (u: number): number => H - m.b - (u / umax) * (H - m.t - m.b);
   const t = (x: number, y: number, s: string, a = 'middle', fill = '--muted'): string => `<text x="${x}" y="${y}" text-anchor="${a}" fill="var(${fill})" font-size="11" font-family="var(--mono)">${s}</text>`;
   let s = `<svg width="${W}" height="${H}" role="img" aria-label="${task.group}の、資源と効用の関係と選ばれた設定">`;
   s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--axis)"/><line x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${Y(0)}" stroke="var(--axis)"/>`;
   const xs = rmax > 0.2 ? 0.1 : rmax > 0.04 ? 0.02 : 0.01;
-  for (let r = 0; r <= rmax; r += xs) s += t(X(r), H - m.b + 14, (r * 100).toFixed(0) + '%');
-  s += t(m.l - 5, Y(umax / 1.12) + 4, (umax / 1.12).toFixed(1), 'end') + t(m.l - 5, Y(0) + 4, '0', 'end');
-  s += `<text x="${(m.l + W - m.r) / 2}" y="${H - 2}" text-anchor="middle" fill="var(--ink2)" font-size="11" font-family="var(--font)">資源（時間の割合）</text>`;
+  for (let r = 0; r <= rmax; r += xs) s += t(X(r), H - m.b + 13, (r * 100).toFixed(0) + '%');
+  s += t(m.l - 5, Y(umax / 1.12) + 4, (umax / 1.12).toFixed(1), 'end') + t(m.l - 5, Y(0) + 1, '0', 'end');
+  s += `<text x="${(m.l + W - m.r) / 2}" y="${H - 4}" text-anchor="middle" fill="var(--ink2)" font-size="11" font-family="var(--font)">資源（時間の割合）</text>`;
   s += `<path d="${h.map((p, i) => `${i ? 'L' : 'M'}${X(p.r).toFixed(1)} ${Y(p.u).toFixed(1)}`).join('')}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
   for (const p of task.points) s += `<circle cx="${X(p.r)}" cy="${Y(p.u)}" r="3" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.2"/>`;
   for (const [p, n] of chosen) s += `<circle cx="${X(p.r)}" cy="${Y(p.u)}" r="8" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>` +
