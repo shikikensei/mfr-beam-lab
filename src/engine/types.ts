@@ -51,7 +51,7 @@ export interface PatternState {
   /** Sum of event lengths executed in the current frame. */
   done: Us;
   idx: number;
-  /** When the region's most recent beam ended (0 before the first one). */
+  /** When the region's most recent beam started (0 before the first one). */
   last: Us;
 }
 

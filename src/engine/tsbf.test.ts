@@ -79,7 +79,7 @@ describe('two-slope benefit: one window', () => {
   const S15 = [region('S', 20, 15, 600, 0)];
   it('places the looks, fills each opening with as many search looks as fit, and leaves the rest empty', () => {
     const a = fx('track', 32, 5, 5, 10), b = fx('track', 70, 5, 5, 8);
-    const box = planTsbf(view(0, [a, b], S15, { tsbfWindow: 100_000 }));
+    const box = planTsbf(view(0, [a, b], S15, { tsbfWindow: 100_000, fill: 'full' }));
     expect(startOf(box, a)).toBe(32);
     expect(startOf(box, b)).toBe(70);
     // openings 32, 28 and 22 ms long: floor(32/15) + floor(28/15) + floor(22/15) = 2 + 1 + 1
@@ -90,15 +90,23 @@ describe('two-slope benefit: one window', () => {
 
   it('search order: regions past their threshold first (smaller threshold first), then the longest wait', () => {
     const regions = [region('X', 10, 10, 1000, 0), region('Y', 10, 10, 400, 1)]; // thresholds 100 and 40 ms
-    const box = planTsbf(view(200, [], regions, { tsbfWindow: 100_000 }, [{ pst: 0, done: 0, idx: 0, last: 50_000 }, { pst: 0, done: 0, idx: 0, last: 150_000 }]));
+    const box = planTsbf(view(200, [], regions, { tsbfWindow: 100_000, fill: 'full' }, [{ pst: 0, done: 0, idx: 0, last: 50_000 }, { pst: 0, done: 0, idx: 0, last: 150_000 }]));
     // at 200 ms: X waited 150 (past 100), Y waited 50 (past 40): both past, Y has the smaller threshold
     expect(box.items[0].type === 'flex' && box.items[0].region).toBe(1);
     expect(box.items[1].type === 'flex' && box.items[1].region).toBe(0);
   });
 
+  it('pace setting: only regions that have reached their threshold are offered, the rest of the time is spare', () => {
+    const regions = [region('X', 10, 10, 1000, 0)]; // threshold 100 ms
+    const box = planTsbf(view(200, [], regions, { tsbfWindow: 100_000, fill: 'pace' }, [{ pst: 0, done: 0, idx: 0, last: 150_000 }]));
+    // due at 250 ms (100 ms after the last look began); the next one is due at 350 ms, outside the window
+    expect(box.items.map((x) => [x.type, x.start / 1000, x.len / 1000])).toEqual([['spare', 200, 50], ['flex', 250, 10], ['spare', 260, 40]]);
+    expect(tiles(box)).toBe(true);
+  });
+
   it('never lets a look cross the window edge: it waits for the next window or is dropped as a boundary loss', () => {
     const wait = fx('track', 96, 4, 20, 10), lost = fx('track', 93, 2, 2, 10); // lost: window 91..95, would end at 101..105
-    const box = planTsbf(view(0, [wait, lost], S15, { tsbfWindow: 100_000 }));
+    const box = planTsbf(view(0, [wait, lost], S15, { tsbfWindow: 100_000, fill: 'full' }));
     expect(startOf(box, wait)).toBeNull();
     expect(startOf(box, lost)).toBeNull();
     expect(box.dropped.map((d) => [d.req.id, d.reason])).toEqual([[lost.id, 'boundary']]);

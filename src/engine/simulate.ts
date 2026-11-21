@@ -79,7 +79,7 @@ export function simulate(sc: Scenario, cfg: SimConfig): SimResult {
       tg.state = 'confirming'; mark(end, i, 'detect');
       addRequest('confirm', i, end + P.confirmDelay, P.confirmLead, P.confirmTrail, P.confirmLen, end, P.confirmDelay);
     });
-    pat.done += p.len; pat.last = end;
+    pat.done += p.len; pat.last = p.start;
     if (++pat.idx === reg.beams) { frames[p.region].push([end, end - pat.pst]); pat.pst = end; pat.done = 0; pat.idx = 0; }
   }
   function runFixed(p: Extract<Placement, { type: 'fixed' }>, box: number): void {

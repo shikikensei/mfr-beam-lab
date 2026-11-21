@@ -101,9 +101,13 @@ export const planTsbf: Planner = (v: PlanView): Box => {
   // Search fills the openings. Each region has one pending look; e = time since its last look.
   // Regions whose e has reached their threshold w come first (smaller w first, then larger e),
   // the others follow by larger e. The first one in that order that fits is placed.
+  // The tool's common setting decides how far to go: "full" fills as the summary says; "pace"
+  // offers only the regions that have reached their threshold, so search stops at its desired pace.
   const w = v.regions.map((g) => g.dft / g.beams), last = v.patterns.map((p) => p.last);
+  const pace = v.cfg.fill === 'pace';
   let c = t;
   const fill = (to: Us): void => {
+    let wanted = !pace;
     while (c < to) {
       const e = last.map((x) => c - x);
       const order = v.regions.map((_, i) => i).sort((a, b) => {
@@ -111,12 +115,24 @@ export const planTsbf: Planner = (v: PlanView): Box => {
         if (oa !== ob) return oa ? -1 : 1;
         return (oa ? w[a] - w[b] : 0) || e[b] - e[a] || a - b;
       });
-      const i = order.find((k) => c + v.regions[k].beamLen <= to);
-      if (i === undefined) break;
+      const due = pace ? order.filter((k) => e[k] >= w[k]) : order;
+      const i = due.find((k) => c + v.regions[k].beamLen <= to);
+      if (i === undefined) {
+        if (due.length) { wanted = true; break; } // something is due but too long for what is left
+        // nothing is due yet: idle until the first region reaches its threshold, then look again
+        const next = Math.min(to, ...v.regions.map((_, k) => Math.ceil(last[k] + w[k])));
+        if (next <= c) break;
+        items.push({ type: 'spare', start: c, len: next - c }); c = next;
+        continue;
+      }
       items.push({ type: 'flex', region: i, start: c, len: v.regions[i].beamLen });
-      c += v.regions[i].beamLen; last[i] = c;
+      last[i] = c; c += v.regions[i].beamLen;
     }
-    if (c < to) { const cause: GapCause = to === end ? 'boundary' : 'fragment'; items.push({ type: 'gap', start: c, len: to - c, cause }); c = to; }
+    if (c < to) {
+      const cause: GapCause = to === end ? 'boundary' : 'fragment';
+      items.push(wanted ? { type: 'gap', start: c, len: to - c, cause } : { type: 'spare', start: c, len: to - c });
+      c = to;
+    }
   };
   const nFixed = items.length;
   for (let i = 0; i < nFixed; i++) { const p = items[i]; fill(p.start); c = p.start + p.len; }

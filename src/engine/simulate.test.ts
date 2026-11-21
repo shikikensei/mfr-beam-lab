@@ -14,8 +14,8 @@ const VARIANTS: [string, Partial<SimConfig>][] = [
   ['legacy, full', { scheduler: 'legacy', fill: 'full' }],
   ...(['fifo', 'template', 'priority', 'edf', 'balance'] as const).flatMap((scheduler): [string, Partial<SimConfig>][] =>
     [[`${scheduler}, pace`, { scheduler, fill: 'pace' }], [`${scheduler}, full`, { scheduler, fill: 'full' }]]),
-  // The two-slope scheduler always fills every opening (its own rule), so only "full" describes it.
-  ['two-slope benefit, 100 ms window', { scheduler: 'tsbf', fill: 'full' }],
+  ['two-slope benefit, 100 ms window, pace', { scheduler: 'tsbf', fill: 'pace' }],
+  ['two-slope benefit, 100 ms window, full', { scheduler: 'tsbf', fill: 'full' }],
   ['two-slope benefit, 300 ms window', { scheduler: 'tsbf', fill: 'full', tsbfWindow: 300_000 }],
 ];
 const run = (targets: number, c: Partial<SimConfig>, seed = 11, extra = {}) =>
