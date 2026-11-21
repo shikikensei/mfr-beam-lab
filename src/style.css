@@ -158,3 +158,5 @@ details .check{margin-top:10px}
 #score th{white-space:nowrap;font-size:11.5px}
 #score td:first-child{font-size:13px}
 #score td+td{white-space:nowrap}
+.wip{font-size:13px;color:var(--ink2);border:1px solid var(--axis);border-radius:8px;padding:8px 12px;margin:0 0 4px}
+.wip b{display:inline-block;font-size:12px;font-weight:700;color:var(--surface);background:var(--ink2);border-radius:4px;padding:0 6px;margin-right:8px}
