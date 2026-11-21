@@ -64,6 +64,8 @@ export interface TargetSpec {
   disappear: Us | null;
   high: boolean;
   dwell: Us;
+  /** Update interval chosen by the allocation layer (chapter 4); default is the one of its class. */
+  interval?: Us;
   /** Far target: its track dwells are transmit, a long wait, receive (didactic scale, not a real range). */
   far?: boolean;
 }

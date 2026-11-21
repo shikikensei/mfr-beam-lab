@@ -2,6 +2,7 @@
 // (chapter 2) or under all of them (chapter 3). Both chapters share the chosen situation.
 import { perSecond, summarize } from '../engine/metrics.ts';
 import type { Summary } from '../engine/metrics.ts';
+import { applyAllocation } from '../engine/qram.ts';
 import { DEFAULT_CONFIG, demandSeries, makeScenario, nominalDemand } from '../engine/scenario.ts';
 import type { ScenarioOptions } from '../engine/scenario.ts';
 import { simulate } from '../engine/simulate.ts';
@@ -28,7 +29,11 @@ const PRESETS: Preset[] = [
   { id: 'recover', label: '減って回復する', note: '目標36が20秒で現れ、40秒の時点で8つを残して消えます。あふれたあと、どう立ち直るかを見ます。', opt: { targets: 36, ramp: ms(20000), disappear: { at: ms(40000), keep: 8 } } },
 ];
 
-const state = { preset: 'sat', method: 'plus' as LabId, a: 'priority' as LabId, b: 'plus' as LabId, sel: 45, swSel: 24, timer: 0, keep: false, win: 100 };
+const state = { preset: 'sat', method: 'plus' as LabId, a: 'priority' as LabId, b: 'plus' as LabId, sel: 45, swSel: 24, timer: 0, keep: false, win: 100,
+  /** Resource limit of the allocation layer (chapter 4) applied to the situation, or null for the situation as it is. */
+  alloc: null as number | null };
+/** A scenario of the lab: the preset's options, then the allocation's choices if one is in force. */
+const build = (o: ScenarioOptions, alloc = state.alloc): Scenario => { const sc = makeScenario(o); return alloc === null ? sc : applyAllocation(sc, alloc).sc; };
 /** The one convention the reader can switch: does a late search beam keep its lateness? */
 const conv = (keep = state.keep) => ({ searchBacklog: keep ? Infinity : 0 });
 const cfgOf = (id: LabId, keep = state.keep, win = state.win): SimConfig => ({ ...DEFAULT_CONFIG, ...labOf(id).cfg, conv: conv(keep), tsbfWindow: ms(win) });
@@ -38,12 +43,13 @@ interface Run { sim: SimResult; per: StackData; sum: Summary }
 const scenarios = new Map<string, { sc: Scenario; demand: number[]; search: number }>();
 const runs = new Map<string, Run>();
 function situation(): { sc: Scenario; demand: number[]; search: number } {
-  let s = scenarios.get(state.preset);
-  if (!s) { const sc = makeScenario({ ...presetOf().opt, seed: SEED, duration: DURATION }), d = demandSeries(sc); s = { sc, demand: d.total, search: d.search }; scenarios.set(state.preset, s); }
+  const key = state.preset + '|' + state.alloc;
+  let s = scenarios.get(key);
+  if (!s) { const sc = build({ ...presetOf().opt, seed: SEED, duration: DURATION }), d = demandSeries(sc); s = { sc, demand: d.total, search: d.search }; scenarios.set(key, s); }
   return s;
 }
 function run(id: LabId, keep = state.keep): Run {
-  const key = [state.preset, id, keep, id === 'tsbf' ? state.win : 0].join('|');
+  const key = [state.preset, state.alloc, id, keep, id === 'tsbf' ? state.win : 0].join('|');
   let r = runs.get(key);
   if (!r) { const sim = simulate(situation().sc, cfgOf(id, keep)); r = { sim, per: perSecond(sim), sum: summarize(sim) }; runs.set(key, r); }
   return r;
@@ -105,6 +111,7 @@ const pick = (k: number): void => { stop(); state.sel = k; redraw(); };
 
 // ---- chapter 2
 function drawLoad(): void {
+  allocBanner('allocNote2');
   presetButtons($('presets'), $('presetNote'));
   methodSelect('labMethod', 'method');
   const paren = /（(.+)）$/.exec(labOf(state.method).label);
@@ -132,17 +139,17 @@ const SWEEP_N = [4, 8, 12, 16, 20, 24, 28, 32, 36, 40];
 interface SweepPoint { n: number; search: number; drop: number; upper: number }
 let sweep: { key: string; a: SweepPoint[]; b: SweepPoint[]; full: number } | null = null;
 function sweepOf(): NonNullable<typeof sweep> {
-  const key = [state.preset, state.a, state.b, state.keep, state.win].join('|');
+  const key = [state.preset, state.alloc, state.a, state.b, state.keep, state.win].join('|');
   if (sweep?.key === key) return sweep;
   const { highFrac, farFrac } = presetOf().opt;
   let full = 0;
   const line = (id: LabId): SweepPoint[] => SWEEP_N.map((n) => {
-    const sc = makeScenario({ targets: n, seed: SEED, duration: ms(30000), highFrac, farFrac });
+    const sc = build({ targets: n, seed: SEED, duration: ms(30000), highFrac, farFrac });
     const s = summarize(simulate(sc, cfgOf(id)));
     return { n, search: s.share.search / demandSeries(sc).search, drop: s.fixed.requested ? s.fixed.dropped / s.fixed.requested : 0, upper: s.fixed.upperRequested ? s.fixed.upperDropped / s.fixed.upperRequested : 0 };
   });
   // the target count at which the wanted amount reaches 100 %, by linear interpolation
-  const d = SWEEP_N.map((n) => nominalDemand(makeScenario({ targets: n, seed: SEED, highFrac })));
+  const d = SWEEP_N.map((n) => nominalDemand(build({ targets: n, seed: SEED, highFrac })));
   const i = d.findIndex((x) => x >= 1);
   if (i > 0) full = SWEEP_N[i - 1] + ((1 - d[i - 1]) / (d[i] - d[i - 1])) * (SWEEP_N[i] - SWEEP_N[i - 1]);
   return (sweep = { key, a: line(state.a), b: line(state.b), full });
@@ -157,7 +164,7 @@ const statCache = new Map<string, Stats>();
  * The first seed is shown at once; the others are computed in the background, one scheduler per
  * tick, and the table and chart are redrawn when they are in.
  */
-const statKey = (id: LabId, keep: boolean): string => [state.preset, id, SIMPLE.has(id) ? keep : '-', id === 'tsbf' ? state.win : 0].join('|');
+const statKey = (id: LabId, keep: boolean): string => [state.preset, state.alloc, id, SIMPLE.has(id) ? keep : '-', id === 'tsbf' ? state.win : 0].join('|');
 const toStats = (all: Summary[], want: number): Stats => {
   const avg = (f: (s: Summary) => number): number => spread(all.map(f)).mean;
   return { tx: avg((s) => s.txShare * 100), overlap: avg((s) => s.overlap * 100), search: spread(all.map((s) => (s.share.search / want) * 100)), hi: avg((s) => s.regions[0].served * 100), lo: avg((s) => s.regions[s.regions.length - 1].served * 100),
@@ -178,9 +185,9 @@ function stats(id: LabId, keep = state.keep): Stats {
   if (full) return full;
   if (!queue.has(key)) {
     // capture everything the job needs now: the reader may change the settings before it runs
-    const opt = presetOf().opt, win = state.win, first = run(id, keep).sum;
+    const opt = presetOf().opt, win = state.win, alloc = state.alloc, first = run(id, keep).sum;
     queue.set(key, () => statCache.set(key, toStats([first, ...SEEDS.filter((x) => x !== SEED).map((seed) =>
-      summarize(simulate(makeScenario({ ...opt, seed, duration: DURATION }), cfgOf(id, keep, win))))], want)));
+      summarize(simulate(build({ ...opt, seed, duration: DURATION }, alloc), cfgOf(id, keep, win))))], want)));
     if (!pumping) pumping = window.setTimeout(pump, 30);
   }
   return toStats([run(id, keep).sum], want);
@@ -215,6 +222,7 @@ function drawScore(): void {
       : `入れたい量が上限を超えるので、右下（両方を守る）には誰も届きません。点は、捜索を守る側（右上）か、固定タスクを守る側（左下）に寄ります。${same}`;
 }
 function drawCompare(): void {
+  allocBanner('allocNote3');
   presetButtons($('presets3'), $('presetNote3'));
   const kb = $<HTMLSelectElement>('keep');
   if (!kb.dataset.wired) { kb.dataset.wired = '1'; kb.addEventListener('change', () => { state.keep = kb.value === 'keep'; sweep = null; redraw(); }); }
@@ -261,6 +269,19 @@ function drawSweep(): void {
 /** What chapter 2 is showing, for the jump into the slow-motion view of chapter 1. */
 export function labView(): { sc: Scenario; at: number; method: LabId; win: number; label: string; conv: SimConfig['conv'] } {
   return { sc: situation().sc, at: state.sel * 1e6, method: state.method, win: state.win, label: `2章「${presetOf().label}」の ${state.sel}〜${state.sel + 1} 秒`, conv: conv() };
+}
+// ---- shared with chapter 4 (the allocation layer)
+export const labPresets = (): { id: string; label: string; opt: Preset['opt'] }[] => PRESETS;
+export const labPreset = (): string => state.preset;
+export function setLabPreset(id: string): void { state.preset = id; sweep = null; }
+export const labAlloc = (): number | null => state.alloc;
+export function setLabAlloc(limit: number | null): void { state.alloc = limit; sweep = null; }
+function allocBanner(id: string): void {
+  const el = $(id);
+  el.hidden = state.alloc === null;
+  if (state.alloc === null) return;
+  if (!el.dataset.wired) { el.dataset.wired = '1'; el.querySelector('button')!.addEventListener('click', () => { setLabAlloc(null); redraw(); }); }
+  el.querySelector('span')!.textContent = `4章の配分（資源の上限 ${(state.alloc * 100).toFixed(0)} %）を使っています。更新間隔・ドウェルの長さ・捜索の所望フレームタイムが、元の状況と違います。`;
 }
 let shown = 0;
 function redraw(): void { if (shown === 2) drawLoad(); else if (shown === 3) drawCompare(); }

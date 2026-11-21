@@ -244,7 +244,7 @@ export function lifeOf(sim: SimResult, target: number): LifeEvent[] {
       const at = q.start! + q.len;
       const shift = q.start! - q.req, moved = Math.abs(shift) < 500 ? '要求時刻どおり' : `要求時刻より ${msTxt(Math.abs(shift))} ${shift < 0 ? '早く' : '遅く'}`;
       if (q.kind === 'confirm') items.push({ t: at, order: 1, make: () => ({ t: at, state: q.hit ? 2 : 0, title: q.hit ? '確認照射が命中、追尾を開始' : '確認照射が外れた ✕',
-        body: q.hit ? `ここから定期的な追尾更新が始まります。次の更新は、いま照射した時刻の ${msTxt(sim.scenario.targets[target].high ? P.intervalHigh : P.intervalNormal)} 後に頼みます。` : '確認できなかったので、未探知に戻ります。次に捜索で見つかるのを待ちます。' }) });
+        body: q.hit ? `ここから定期的な追尾更新が始まります。次の更新は、いま照射した時刻の ${msTxt(sim.scenario.targets[target].interval ?? (sim.scenario.targets[target].high ? P.intervalHigh : P.intervalNormal))} 後に頼みます。` : '確認できなかったので、未探知に戻ります。次に捜索で見つかるのを待ちます。' }) });
       else if (q.hit) items.push({ t: at, order: 1, make: () => ({ t: at, state: 2, title: q.kind === 'retry' ? '再照射が命中' : '追尾更新が命中',
         body: `${moved}に実行されました。次の更新は、実際に照射した時刻を起点に頼みます。` }) });
       else items.push({ t: at, order: 1, make: () => ({ t: at, state: 2, title: (q.kind === 'retry' ? '再照射' : '追尾更新') + 'が外れた ✕',

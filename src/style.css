@@ -188,3 +188,18 @@ details.fine p+p{margin-top:10px}
 #zoomWrap{display:flex;flex-direction:column;gap:8px}
 #zoomWrap[hidden]{display:none}
 #zoomWrap h3{margin:0}
+
+/* ---- chapter 4 */
+.layers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:22px}
+.layers li{position:relative;border:1px solid var(--axis);border-radius:8px;padding:10px 12px;background:var(--page)}
+.layers li+li::before{content:"↓";position:absolute;top:-22px;left:50%;transform:translateX(-50%);color:var(--muted);font-size:15px;line-height:22px}
+.layers b{display:block;font-weight:700}
+.layers span{display:block;color:var(--ink2);font-size:13.5px}
+.layers li:first-child{border-color:var(--accent);border-width:2px}
+.meter3{position:relative;height:16px;background:var(--s-idle);border-radius:4px;overflow:hidden}
+.meter3 i{position:absolute;top:0;bottom:0;left:0;background:var(--accent)}
+.meter3 u{position:absolute;top:0;bottom:0;border-left:2px solid var(--ink)}
+#qGroups{display:flex;flex-direction:column;gap:18px}
+#qGroups h3{margin:0 0 4px}
+#qGroups p{font-size:13.5px;color:var(--ink2);margin-top:4px}
+#allocNote2[hidden],#allocNote3[hidden]{display:none}

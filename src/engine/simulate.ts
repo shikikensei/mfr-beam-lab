@@ -39,7 +39,7 @@ export function simulate(sc: Scenario, cfg: SimConfig): SimResult {
     requests.push(r); pending.add(r);
   }
   function trackRequest(i: number, from: Us, at: Us): void {
-    const s = targets[i].spec, interval = s.high ? P.intervalHigh : P.intervalNormal, slack = Math.round(interval * P.slackFrac);
+    const s = targets[i].spec, interval = s.interval ?? (s.high ? P.intervalHigh : P.intervalNormal), slack = Math.round(interval * P.slackFrac);
     addRequest(s.high ? 'trackHigh' : 'track', i, from + interval, slack, slack, s.dwell, at, interval);
   }
   const mark = (t: Us, target: number, kind: Mark['kind']): void => { marks.push({ t, target, kind, gs }); };

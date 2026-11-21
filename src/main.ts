@@ -8,6 +8,7 @@ import { ms } from './engine/types.ts';
 import type { BoxRecord, PlanStep, SimConfig, SimResult, Us } from './engine/types.ts';
 import { METHODS, PHASES, STATES, describe, lifeOf, msTxt, phaseOf } from './ui/text.ts';
 import type { LifeEvent, MethodId } from './ui/text.ts';
+import { drawAlloc } from './ui/alloc.ts';
 import { drawLab, labView } from './ui/lab.ts';
 import { drawHills, drawStrip, drawTimeline } from './ui/timeline.ts';
 
@@ -330,6 +331,7 @@ $('partNext').addEventListener('click', () => (part < 5 ? showPart(part + 1, tru
 function redraw(): void {
   if (chapter === 0) drawIntro();
   if (chapter === 2 || chapter === 3) drawLab(chapter);
+  if (chapter === 4) drawAlloc(showChapter);
   if (chapter === 1) {
     if (part === 1) drawLife();
     if (part === 2) drawRequest();

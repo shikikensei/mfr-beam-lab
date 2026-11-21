@@ -72,6 +72,9 @@ export function makeScenario(o: ScenarioOptions): Scenario {
   };
 }
 
+/** A target's update interval: the allocation's choice if there is one, else the interval of its class. */
+export const intervalOf = (sc: Scenario, t: TargetSpec): Us => t.interval ?? (t.high ? sc.params.intervalHigh : sc.params.intervalNormal);
+
 /**
  * Nominal demand as a fraction of the timeline: every search region at its desired frame time
  * plus every target tracked at its update interval. Confirmations and re-illuminations are not
@@ -79,7 +82,7 @@ export function makeScenario(o: ScenarioOptions): Scenario {
  */
 export function nominalDemand(sc: Scenario): number {
   const search = sc.regions.reduce((a, g) => a + (g.beams * g.beamLen) / g.dft, 0);
-  const track = sc.targets.reduce((a, t) => a + t.dwell / (t.high ? sc.params.intervalHigh : sc.params.intervalNormal), 0);
+  const track = sc.targets.reduce((a, t) => a + t.dwell / intervalOf(sc, t), 0);
   return search + track;
 }
 
@@ -89,7 +92,7 @@ export function demandSeries(sc: Scenario): { search: number; total: number[] } 
   const total: number[] = [];
   for (let k = 0; k * 1e6 < sc.duration; k++) {
     const t = k * 1e6;
-    total.push(search + sc.targets.reduce((a, x) => a + (x.appear <= t && (x.disappear === null || t < x.disappear) ? x.dwell / (x.high ? sc.params.intervalHigh : sc.params.intervalNormal) : 0), 0));
+    total.push(search + sc.targets.reduce((a, x) => a + (x.appear <= t && (x.disappear === null || t < x.disappear) ? x.dwell / intervalOf(sc, x) : 0), 0));
   }
   return { search, total };
 }
