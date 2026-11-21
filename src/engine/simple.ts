@@ -2,7 +2,9 @@
 // the same requests, windows, search patterns and hit/miss draws. Each call decides one dwell
 // (or one stretch of idle time). What "ready" means for them is listed in docs/assumptions.md.
 import { flexibleTaskDeficit } from './ftd.ts';
-import type { Box, FixedRequest, GapCause, PlanView, Placement, Planner, Us } from './types.ts';
+import type { Box, Conventions, FixedRequest, GapCause, PlanView, Placement, Planner, Us } from './types.ts';
+
+export const DEFAULT_CONVENTIONS: Conventions = { searchGrace: 1, searchBacklog: Infinity, balanceBy: 'period' };
 
 interface Cand {
   fixed: FixedRequest | null;
@@ -27,7 +29,7 @@ const KEY: Record<Rule, (c: Cand) => number> = {
 
 interface Ready { fixed: Cand[]; search: Cand[]; nextFixed: Us; nextSearch: Us; searchWants: boolean; critical: Cand | null; guard: Us }
 function candidates(v: PlanView): Ready {
-  const t = v.now;
+  const t = v.now, conv = { ...DEFAULT_CONVENTIONS, ...v.cfg.conv };
   const fixed: Cand[] = [], search: Cand[] = [];
   let nextFixed = Infinity, nextSearch = Infinity, searchWants = false, critical: Cand | null = null, guard = Infinity;
   for (const r of v.queues.flat()) {
@@ -35,7 +37,8 @@ function candidates(v: PlanView): Ready {
     if (r.kind === 'critical' && r.req > t) guard = Math.min(guard, r.req);
     // These schedulers know a requested time and a deadline; they do not run a task early.
     if (r.req > t) { nextFixed = Math.min(nextFixed, r.req); continue; }
-    const c: Cand = { fixed: r, region: -1, len: r.len, release: r.req, deadline: r.latest + r.len, prio: r.rank, late: (t - r.req) / r.period };
+    const c: Cand = { fixed: r, region: -1, len: r.len, release: r.req, deadline: r.latest + r.len, prio: r.rank,
+      late: (t - r.req) / (conv.balanceBy === 'slack' ? Math.max(1, r.latest - r.req) : r.period) };
     if (r.kind === 'critical') critical ??= c; else fixed.push(c);
   }
   v.regions.forEach((g, i) => {
@@ -46,7 +49,8 @@ function candidates(v: PlanView): Ready {
     const behind = flexibleTaskDeficit(pl, g.dft, t + g.beamLen - p.pst, p.done + g.beamLen) >= 0;
     if (behind) searchWants = true;
     if (!behind && v.cfg.fill !== 'full') { nextSearch = Math.min(nextSearch, Math.max(due, t + 1)); return; }
-    search.push({ fixed: null, region: i, len: g.beamLen, release: due, deadline: due + slot, prio: 100 + g.priority, late: (t - due) / slot });
+    const rel = Math.max(due, t - Math.round(conv.searchBacklog * slot));
+    search.push({ fixed: null, region: i, len: g.beamLen, release: rel, deadline: rel + Math.round(conv.searchGrace * slot), prio: 100 + g.priority, late: (t - rel) / slot });
   });
   const fits = (c: Cand): boolean => t + c.len <= guard;
   return { fixed: fixed.filter(fits), search: search.filter(fits), nextFixed, nextSearch, searchWants: searchWants || fixed.length > 0, critical, guard };

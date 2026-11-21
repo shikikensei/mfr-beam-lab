@@ -107,6 +107,17 @@ export interface SimConfig {
   /** Fixed template: share of each rsiLen cycle reserved for fixed tasks. */
   templateShare: number;
   trace: boolean;
+  /** Conventions of the one-dwell schedulers (simple.ts) that can be varied to test their effect. */
+  conv?: Partial<Conventions>;
+}
+
+export interface Conventions {
+  /** A search beam's deadline is this many beam slots after it falls due. */
+  searchGrace: number;
+  /** How far behind a search beam may count as: Infinity keeps the whole backlog of the frame, 1 forgets all but one slot. */
+  searchBacklog: number;
+  /** Time balance divides a fixed task's lateness by its repeat period or by its trailing slack. */
+  balanceBy: 'period' | 'slack';
 }
 
 /** fragment: too short for what was wanted. boundary: would cross a box/window edge. window: the template reserved the time for the other kind. */
