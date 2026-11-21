@@ -15,7 +15,7 @@ import type { LabId } from './text.ts';
 import { drawStrip } from './timeline.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
-const SEED = 11, SEEDS = [11, 12, 13, 14], DURATION = ms(60000);
+const DURATION = ms(60000);
 /** The schedulers the search-lateness convention applies to. */
 const SIMPLE = Object.assign(new Set<string>(['fifo', 'template', 'priority', 'interleave', 'edf', 'balance']), { conv: true });
 const pc = (x: number, d = 0): string => (x * 100).toFixed(d) + ' %';
@@ -31,7 +31,9 @@ const PRESETS: Preset[] = [
 
 const state = { preset: 'sat', method: 'plus' as LabId, a: 'priority' as LabId, b: 'plus' as LabId, sel: 45, swSel: 24, timer: 0, keep: false, win: 100,
   /** Resource limit of the allocation layer (chapter 4) applied to the situation, or null for the situation as it is. */
-  alloc: null as number | null };
+  alloc: null as number | null,
+  /** Seed of the run that is drawn; the scoreboard averages this seed and the next three. */
+  seed: 11 };
 /** A scenario of the lab: the preset's options, then the allocation's choices if one is in force. */
 const build = (o: ScenarioOptions, alloc = state.alloc): Scenario => { const sc = makeScenario(o); return alloc === null ? sc : applyAllocation(sc, alloc).sc; };
 /** The one convention the reader can switch: does a late search beam keep its lateness? */
@@ -43,13 +45,13 @@ interface Run { sim: SimResult; per: StackData; sum: Summary }
 const scenarios = new Map<string, { sc: Scenario; demand: number[]; search: number }>();
 const runs = new Map<string, Run>();
 function situation(): { sc: Scenario; demand: number[]; search: number } {
-  const key = state.preset + '|' + state.alloc;
+  const key = [state.preset, state.alloc, state.seed].join('|');
   let s = scenarios.get(key);
-  if (!s) { const sc = build({ ...presetOf().opt, seed: SEED, duration: DURATION }), d = demandSeries(sc); s = { sc, demand: d.total, search: d.search }; scenarios.set(key, s); }
+  if (!s) { const sc = build({ ...presetOf().opt, seed: state.seed, duration: DURATION }), d = demandSeries(sc); s = { sc, demand: d.total, search: d.search }; scenarios.set(key, s); }
   return s;
 }
 function run(id: LabId, keep = state.keep): Run {
-  const key = [state.preset, state.alloc, id, keep, id === 'tsbf' ? state.win : 0].join('|');
+  const key = [state.preset, state.alloc, state.seed, id, keep, id === 'tsbf' ? state.win : 0].join('|');
   let r = runs.get(key);
   if (!r) { const sim = simulate(situation().sc, cfgOf(id, keep)); r = { sim, per: perSecond(sim), sum: summarize(sim) }; runs.set(key, r); }
   return r;
@@ -111,7 +113,7 @@ const pick = (k: number): void => { stop(); state.sel = k; redraw(); };
 
 // ---- chapter 2
 function drawLoad(): void {
-  allocBanner('allocNote2');
+  allocBanner('allocNote2'); seedInput('seed2');
   presetButtons($('presets'), $('presetNote'));
   methodSelect('labMethod', 'method');
   const paren = /（(.+)）$/.exec(labOf(state.method).label);
@@ -139,17 +141,17 @@ const SWEEP_N = [4, 8, 12, 16, 20, 24, 28, 32, 36, 40];
 interface SweepPoint { n: number; search: number; drop: number; upper: number }
 let sweep: { key: string; a: SweepPoint[]; b: SweepPoint[]; full: number } | null = null;
 function sweepOf(): NonNullable<typeof sweep> {
-  const key = [state.preset, state.alloc, state.a, state.b, state.keep, state.win].join('|');
+  const key = [state.preset, state.alloc, state.seed, state.a, state.b, state.keep, state.win].join('|');
   if (sweep?.key === key) return sweep;
   const { highFrac, farFrac } = presetOf().opt;
   let full = 0;
   const line = (id: LabId): SweepPoint[] => SWEEP_N.map((n) => {
-    const sc = build({ targets: n, seed: SEED, duration: ms(30000), highFrac, farFrac });
+    const sc = build({ targets: n, seed: state.seed, duration: ms(30000), highFrac, farFrac });
     const s = summarize(simulate(sc, cfgOf(id)));
     return { n, search: s.share.search / demandSeries(sc).search, drop: s.fixed.requested ? s.fixed.dropped / s.fixed.requested : 0, upper: s.fixed.upperRequested ? s.fixed.upperDropped / s.fixed.upperRequested : 0 };
   });
   // the target count at which the wanted amount reaches 100 %, by linear interpolation
-  const d = SWEEP_N.map((n) => nominalDemand(build({ targets: n, seed: SEED, highFrac })));
+  const d = SWEEP_N.map((n) => nominalDemand(build({ targets: n, seed: state.seed, highFrac })));
   const i = d.findIndex((x) => x >= 1);
   if (i > 0) full = SWEEP_N[i - 1] + ((1 - d[i - 1]) / (d[i] - d[i - 1])) * (SWEEP_N[i] - SWEEP_N[i - 1]);
   return (sweep = { key, a: line(state.a), b: line(state.b), full });
@@ -164,7 +166,7 @@ const statCache = new Map<string, Stats>();
  * The first seed is shown at once; the others are computed in the background, one scheduler per
  * tick, and the table and chart are redrawn when they are in.
  */
-const statKey = (id: LabId, keep: boolean): string => [state.preset, state.alloc, id, SIMPLE.has(id) ? keep : '-', id === 'tsbf' ? state.win : 0].join('|');
+const statKey = (id: LabId, keep: boolean): string => [state.preset, state.alloc, state.seed, id, SIMPLE.has(id) ? keep : '-', id === 'tsbf' ? state.win : 0].join('|');
 const toStats = (all: Summary[], want: number): Stats => {
   const avg = (f: (s: Summary) => number): number => spread(all.map(f)).mean;
   return { tx: avg((s) => s.txShare * 100), overlap: avg((s) => s.overlap * 100), search: spread(all.map((s) => (s.share.search / want) * 100)), hi: avg((s) => s.regions[0].served * 100), lo: avg((s) => s.regions[s.regions.length - 1].served * 100),
@@ -185,8 +187,8 @@ function stats(id: LabId, keep = state.keep): Stats {
   if (full) return full;
   if (!queue.has(key)) {
     // capture everything the job needs now: the reader may change the settings before it runs
-    const opt = presetOf().opt, win = state.win, alloc = state.alloc, first = run(id, keep).sum;
-    queue.set(key, () => statCache.set(key, toStats([first, ...SEEDS.filter((x) => x !== SEED).map((seed) =>
+    const opt = presetOf().opt, win = state.win, alloc = state.alloc, base = state.seed, first = run(id, keep).sum;
+    queue.set(key, () => statCache.set(key, toStats([first, ...[base + 1, base + 2, base + 3].map((seed) =>
       summarize(simulate(build({ ...opt, seed, duration: DURATION }, alloc), cfgOf(id, keep, win))))], want)));
     if (!pumping) pumping = window.setTimeout(pump, 30);
   }
@@ -206,7 +208,7 @@ function drawScore(): void {
         `<td>${s.gap.toFixed(1)} %</td><td>${n0(s.drop.mean)}${range(s.drop)}</td><td>${n0(s.upper.mean)}${range(s.upper)}</td></tr>`;
     }).join('') + '</tbody>';
   $('scoreState').textContent = waiting ? '計算中です。いまは乱数1種の結果で、すぐに4種の平均と幅に置き換わります。'
-    : '60秒間の合計を、乱数を変えた4回で平均した値です。小さい字は、捜索が水平線／上空、取りこぼしが4回の最小〜最大です。';
+    : `60秒間の合計を、乱数を変えた4回（種 ${state.seed}〜${state.seed + 3}）で平均した値です。小さい字は、捜索が水平線／上空、取りこぼしが4回の最小〜最大です。`;
   const groups = scatterChart($('scatter'), {
     label: '並べ方ごとの、捜索の実行率と固定タスクの取りこぼしの割合（乱数4種の平均と幅）',
     points: all.map(({ m, now, other }) => ({ name: dotName(m.label), x: now.search.mean, y: now.share.mean, xr: [now.search.min, now.search.max], yr: [now.share.min, now.share.max],
@@ -219,7 +221,9 @@ function drawScore(): void {
   const same = big.length ? `幅が互いに重なって区別できないのは、${big.map((g) => `「${g.join('・')}」`).join('と')}です。` : 'どの並べ方も、ほかとは幅が重なっていません。';
   $('scatterRead').textContent = waiting ? '計算中です（いまは乱数1種の結果）。'
     : !over ? `この状況では、入れたい量が最後まで上限の内側です。どの並べ方でも捜索と固定タスクの両方をほぼ守れるので、点は右下に集まります。${same}違いは、下の表の隙間に出ます。`
-      : `入れたい量が上限を超えるので、右下（両方を守る）には誰も届きません。点は、捜索を守る側（右上）か、固定タスクを守る側（左下）に寄ります。${same}`;
+      : il.search.mean > 82 && il.share.mean < 3
+        ? `入れたい量が上限を超えるので、ほとんどの並べ方は、捜索を守る側（右上）か、固定タスクを守る側（左下）に寄ります。「インターリーブ」だけが右下に近づくのは、照射の待ちの時間を使って、同じ時間により多くの照射を入れているためです。その大きさは、遠距離の目標の割合（本ツールが置いた値）で決まります。${same}`
+        : `入れたい量が上限を超えるので、右下（両方を守る）には誰も届きません。点は、捜索を守る側（右上）か、固定タスクを守る側（左下）に寄ります。${same}`;
 }
 function drawCompare(): void {
   allocBanner('allocNote3');
@@ -259,9 +263,12 @@ function drawSweep(): void {
   const step = dmax <= 40 ? 10 : 25, top = Math.ceil(dmax / step) * step;
   lineChart($('swSearch'), { label: '目標数ごとの、捜索を実行できた割合', series: series((p) => p.search), yMax: 100, yStep: 25, unit: '%', ref: ref('bottom'), sel: n, onPick });
   lineChart($('swDrop'), { label: '目標数ごとの、固定タスクを取りこぼした割合', series: series((p) => p.drop), yMax: top, yStep: step, unit: '%', ref: ref('top'), sel: n, onPick });
+  const sl = $<HTMLInputElement>('swN');
+  if (!sl.dataset.wired) { sl.dataset.wired = '1'; sl.addEventListener('input', () => { state.swSel = Number(sl.value); drawSweep(); }); }
+  sl.value = String(n); $('swNOut').textContent = String(n);
   const at = (l: SweepPoint[]): SweepPoint => l.find((p) => p.n === n)!;
   const txt = (p: SweepPoint): string => `捜索 <b>${pc(p.search)}</b>、取りこぼし <b>${pc(p.drop, 1)}</b>（上位タスクだけなら ${pc(p.upper, 1)}）`;
-  $('swRead').innerHTML = `目標 ${n}：<b>A</b> ${txt(at(sw.a))}<br>　　　　<b>B</b> ${txt(at(sw.b))}<br>グラフをなぞると、読む目標数を変えられます。`;
+  $('swRead').innerHTML = `目標 ${n}：<b>A</b> ${txt(at(sw.a))}<br>　　　　<b>B</b> ${txt(at(sw.b))}`;
   $('swTable').innerHTML = '<thead><tr><th>目標数</th><th>A 捜索</th><th>A 取りこぼし</th><th>B 捜索</th><th>B 取りこぼし</th></tr></thead><tbody>' +
     sw.a.map((p, i) => `<tr><td>${p.n}</td><td>${pc(p.search)}</td><td>${pc(p.drop, 1)}</td><td>${pc(sw.b[i].search)}</td><td>${pc(sw.b[i].drop, 1)}</td></tr>`).join('') + '</tbody>';
 }
@@ -274,7 +281,38 @@ export function labView(): { sc: Scenario; at: number; method: LabId; win: numbe
 export const labPresets = (): { id: string; label: string; opt: Preset['opt'] }[] => PRESETS;
 export const labPreset = (): string => state.preset;
 export function setLabPreset(id: string): void { state.preset = id; sweep = null; }
+export const labSeed = (): number => state.seed;
 export const labAlloc = (): number | null => state.alloc;
+// ---- the settings as a URL fragment, so that a view can be shared
+const isLab = (x: string | null): x is LabId => !!x && LAB.some((m) => m.id === x);
+/** e.g. "p=sat&m=plus&a=priority&b=plus&s=11" (defaults are left out). */
+export function labQuery(): string {
+  const q = new URLSearchParams();
+  q.set('p', state.preset); q.set('m', state.method); q.set('a', state.a); q.set('b', state.b); q.set('s', String(state.seed));
+  if (state.keep) q.set('k', '1');
+  if (state.win !== 100) q.set('w', String(state.win));
+  if (state.alloc !== null) q.set('q', String(Math.round(state.alloc * 100)));
+  if (state.sel !== 45) q.set('t', String(state.sel));
+  return q.toString();
+}
+/** Take over what a shared URL says; anything missing or not understood keeps its default. */
+export function applyLabQuery(query: string): void {
+  const q = new URLSearchParams(query), int = (k: string, lo: number, hi: number): number | null => { const v = Number(q.get(k)); return q.has(k) && Number.isInteger(v) && v >= lo && v <= hi ? v : null; };
+  const p = q.get('p'); if (p && PRESETS.some((x) => x.id === p)) state.preset = p;
+  const m = q.get('m'), a = q.get('a'), b = q.get('b');
+  if (isLab(m)) state.method = m; if (isLab(a)) state.a = a; if (isLab(b)) state.b = b;
+  state.seed = int('s', 1, 9999) ?? state.seed; state.keep = q.get('k') === '1'; state.win = int('w', 300, 300) ?? 100;
+  const al = int('q', 40, 130); state.alloc = al === null ? null : al / 100;
+  state.sel = int('t', 0, 59) ?? state.sel; sweep = null;
+}
+function seedInput(id: string): void {
+  const el = $<HTMLInputElement>(id);
+  if (!el.dataset.wired) { el.dataset.wired = '1'; el.addEventListener('change', () => { const v = Math.round(Number(el.value)); state.seed = v >= 1 && v <= 9999 ? v : 11; sweep = null; redraw(); }); }
+  el.value = String(state.seed);
+}
+let onChange: () => void = () => {};
+/** Called after every redraw of chapters 2 and 3, so that the page can keep the address in step. */
+export function onLabChange(f: () => void): void { onChange = f; }
 export function setLabAlloc(limit: number | null): void { state.alloc = limit; sweep = null; }
 function allocBanner(id: string): void {
   const el = $(id);
@@ -284,7 +322,7 @@ function allocBanner(id: string): void {
   el.querySelector('span')!.textContent = `4章の配分（資源の上限 ${(state.alloc * 100).toFixed(0)} %）を使っています。更新間隔・ドウェルの長さ・捜索の所望フレームタイムが、元の状況と違います。`;
 }
 let shown = 0;
-function redraw(): void { if (shown === 2) drawLoad(); else if (shown === 3) drawCompare(); }
+function redraw(): void { if (shown === 2) drawLoad(); else if (shown === 3) drawCompare(); onChange(); }
 export function drawLab(chapter: number): void {
   if (chapter !== shown) stop();
   shown = chapter;

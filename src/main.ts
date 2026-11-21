@@ -9,7 +9,7 @@ import type { BoxRecord, PlanStep, SimConfig, SimResult, Us } from './engine/typ
 import { METHODS, PHASES, STATES, describe, lifeOf, msTxt, phaseOf } from './ui/text.ts';
 import type { LifeEvent, MethodId } from './ui/text.ts';
 import { drawAlloc } from './ui/alloc.ts';
-import { drawLab, labView } from './ui/lab.ts';
+import { applyLabQuery, drawLab, labQuery, labView, onLabChange } from './ui/lab.ts';
 import { drawHills, drawStrip, drawTimeline } from './ui/timeline.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -21,6 +21,11 @@ const configOf = (id: MethodId, fill: SimConfig['fill'] = 'pace'): SimConfig =>
 // ================= chapters =================
 const chapters = [...document.querySelectorAll<HTMLElement>('.chapter')];
 let chapter = 0;
+/** The address names the chapter and, for chapters 2 to 4, the settings: "#ch3?p=sat&a=priority&b=plus&s=11". */
+function syncAddress(): void {
+  const want = '#ch' + chapter + (chapter >= 2 && chapter <= 4 ? '?' + labQuery() : '');
+  if (location.hash !== want) { try { history.replaceState(null, '', want); } catch { /* preview hosts may refuse; sharing then needs the public page */ } }
+}
 function showChapter(i: number, scroll = true): void {
   chapter = Math.max(0, Math.min(chapters.length - 1, i));
   chapters.forEach((c, k) => { c.hidden = k !== chapter; });
@@ -28,7 +33,7 @@ function showChapter(i: number, scroll = true): void {
   $('chNow').textContent = `${chapter} ${chapters[chapter].dataset.title}`;
   $<HTMLButtonElement>('chPrev').disabled = chapter === 0;
   $<HTMLButtonElement>('chNext').disabled = chapter === chapters.length - 1;
-  if (location.hash !== '#ch' + chapter) history.replaceState(null, '', '#ch' + chapter);
+  syncAddress();
   if (scroll) window.scrollTo(0, 0);
   redraw();
 }
@@ -41,7 +46,9 @@ $('chapnav').addEventListener('click', (e) => {
 });
 $('chPrev').addEventListener('click', () => showChapter(chapter - 1));
 $('chNext').addEventListener('click', () => showChapter(chapter + 1));
-window.addEventListener('hashchange', () => { const m = /^#ch(\d)$/.exec(location.hash); if (m && Number(m[1]) !== chapter) showChapter(Number(m[1])); });
+const readAddress = (): number | null => { const m = /^#ch(\d)(?:\?(.*))?$/.exec(location.hash); if (!m) return null; if (m[2]) applyLabQuery(m[2]); return Number(m[1]); };
+window.addEventListener('hashchange', () => { const c = readAddress(); if (c !== null) showChapter(c, c !== chapter); });
+onLabChange(syncAddress);
 
 // ================= chapter 0: the strip =================
 function drawIntro(): void {
@@ -324,8 +331,23 @@ function showPart(p: number, scroll = false): void {
   if (tab) $('parts').scrollLeft = tab.offsetLeft - $('parts').offsetLeft - 16;
   redraw();
 }
+// arrow keys move between the tabs of chapter 1, as in any tab list
+$('parts').addEventListener('keydown', (e) => {
+  const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+  if (!d) return;
+  e.preventDefault(); showPart(Math.max(1, Math.min(5, part + d)));
+  $('parts').querySelector<HTMLElement>(`[data-part="${part}"]`)?.focus();
+});
 $('parts').addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest('button'); if (b) showPart(Number(b.dataset.part)); });
 $('partNext').addEventListener('click', () => (part < 5 ? showPart(part + 1, true) : showChapter(2)));
+
+// ---- copy the address of the current view
+for (const id of ['share2', 'share3']) $(id).addEventListener('click', async () => {
+  syncAddress();
+  const out = $(id + 'Out');
+  try { await navigator.clipboard.writeText(location.href); out.textContent = 'コピーしました。'; }
+  catch { out.textContent = 'コピーできませんでした。アドレス欄のURLをそのまま共有してください。'; }
+});
 
 // ================= redraw whatever is visible =================
 function redraw(): void {
@@ -346,5 +368,4 @@ new MutationObserver(redraw).observe(document.documentElement, { attributes: tru
 void document.fonts?.ready.then(redraw);
 
 showPart(1);
-const m0 = /^#ch(\d)$/.exec(location.hash);
-showChapter(m0 ? Number(m0[1]) : 0, false);
+showChapter(readAddress() ?? 0, false);

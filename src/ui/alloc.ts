@@ -3,7 +3,7 @@
 import { applyAllocation, hull } from '../engine/qram.ts';
 import type { QTask, Setpoint } from '../engine/qram.ts';
 import { makeScenario } from '../engine/scenario.ts';
-import { labAlloc, labPreset, labPresets, setLabAlloc, setLabPreset } from './lab.ts';
+import { labAlloc, labPreset, labPresets, labSeed, setLabAlloc, setLabPreset } from './lab.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const pc = (x: number, d = 0): string => (x * 100).toFixed(d) + ' %';
@@ -41,7 +41,7 @@ export function drawAlloc(go: (chapter: number) => void): void {
   const preset = labPresets().find((p) => p.id === labPreset())!, limit = Number(limitEl.value) / 100;
   $('qPresets').querySelectorAll('button').forEach((b) => { const on = b.dataset.preset === preset.id; b.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-checked', String(on)); });
   $('qLimitOut').textContent = pc(limit);
-  const base = makeScenario({ ...preset.opt, seed: 11 }), { alloc, tasks } = applyAllocation(base, limit);
+  const base = makeScenario({ ...preset.opt, seed: labSeed() }), { alloc, tasks } = applyAllocation(base, limit);
   const lowest = tasks.reduce((a, t) => a + hull(t.points)[0].r, 0), top = tasks.reduce((a, t) => a + Math.max(...t.points.map((p) => p.u)), 0), topR = tasks.reduce((a, t) => a + hull(t.points).at(-1)!.r, 0);
   $('qResult').innerHTML = alloc.feasible
     ? `目標 ${base.targets.length}、捜索 ${base.regions.length} 領域。上限 <b>${pc(limit)}</b> のうち <b>${pc(alloc.used, 1)}</b> を配りました。効用の合計は <b>${alloc.utility.toFixed(1)}</b> です（全員が最高の設定なら ${top.toFixed(1)}、それには ${pc(topR)} が必要）。`

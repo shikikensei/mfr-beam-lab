@@ -13,7 +13,7 @@
   <header>
     <div class="eyebrow">MULTI-FUNCTION RADAR / RESOURCE MANAGEMENT</div>
     <h1>MFRビームスケジューリング研究室</h1>
-    <p class="wip" role="note"><b>開発中</b>このページは作りかけです。4章は未完成で、数値・文章・画面は予告なく変わります。</p>
+    <p class="wip" role="note"><b>開発中</b>0〜5章までそろいましたが、作者による最終の確認前です。数値・文章・画面は変わることがあります。</p>
     <nav class="chapnav" id="chapnav" aria-label="章"></nav>
   </header>
 
@@ -188,6 +188,8 @@
       <p class="note" id="presetNote"></p>
       <div class="field"><label for="labMethod">並べ方</label><select id="labMethod"></select></div>
       <p class="note" id="labHow"></p>
+      <div class="field"><label for="seed2">乱数の種（当たり外れと目標の配置を決める番号。1〜9999）</label><input type="number" id="seed2" min="1" max="9999" step="1" inputmode="numeric"></div>
+      <div class="share"><button type="button" class="ghost" id="share2">この設定のURLをコピー</button><span id="share2Out" aria-live="polite"></span></div>
     </div>
     <div class="card">
       <h2>1秒ごとのビームの使い道</h2>
@@ -227,6 +229,8 @@
       <h2>状況</h2>
       <div class="scenes" id="presets3" role="radiogroup" aria-label="状況"></div>
       <p class="note" id="presetNote3"></p>
+      <div class="share"><button type="button" class="ghost" id="share3">この設定のURLをコピー</button><span id="share3Out" aria-live="polite"></span></div>
+      <p class="note">URLには、状況、並べ方、乱数の種、取り決めの切り替えが入ります。乱数の種は2章で変えられます。</p>
     </div>
     <div class="card">
       <h2>10の並べ方の成績</h2>
@@ -288,6 +292,7 @@
       <div class="chart" id="swSearch"><p class="note">この図が画面に入ったら計算します。</p></div>
       <h3>固定タスク：要求のうち取りこぼした割合</h3>
       <div class="chart" id="swDrop"></div>
+      <div class="field"><label for="swN">読む目標数 <output id="swNOut" for="swN"></output></label><input type="range" id="swN" min="4" max="40" step="4" value="24"></div>
       <p class="note" id="swRead" aria-live="polite"></p>
       <div class="tablewrap"><details><summary>数値の表</summary><table id="swTable"></table></details></div>
     </div>
@@ -342,12 +347,63 @@
 
   <!-- ===== 5 前提と文献（暫定） ===== -->
   <section class="chapter" id="ch5" data-title="前提と文献" hidden>
-    <p class="see"><b>この章について</b>書きかけです。いま動いている部分の前提だけを載せています</p>
+    <p class="see"><b>この章について</b>このページが置いた仮定と、文献との違いの一覧です</p>
+    <p class="lead">1〜4章の図と数値は、すべてここに書いた仮定の上に成り立っています。文献にあることと、このページが決めたことを分けて書きました。原文を確かめられなかったものは「未確認」としています。</p>
     <div class="card">
       <h2>このモデルの性格</h2>
       <ul class="plain">
         <li>公開文献の考え方を単純化した教育用モデルです。特定の装置の方式や数値は含みません。</li>
         <li>少数の目標と長めのドウェルにして、1手ずつ追えるようにしています。数値はすべて説明用です。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>説明用シナリオの数値</h2>
+      <ul class="plain">
+        <li>どれも特定の装置の値ではありません。少数の目標と長めのドウェルにして、1手ずつ追えるようにしたものです。</li>
+        <li>捜索：水平線 12ビーム × 15 ms（所望フレームタイム 0.6 s）、上空 20ビーム × 10 ms（1.0 s）。</li>
+        <li>追尾：高機動の目標は 0.3 s ごと、その他は 0.6 s ごと。スラックは前後とも更新間隔の 8 %。ドウェルは 8〜16 ms。</li>
+        <li>確認照射：探知の 100 ms 後を要求、前 90 ms・後 100 ms、長さ 12 ms。再照射：外れの 30 ms 後を要求、前 25 ms・後 60 ms。</li>
+        <li>探知確率：捜索 0.85、確認 0.92、追尾 0.88。3回続けて外すとロストです。取りこぼした更新は、外れ1回と同じ扱いです。</li>
+        <li>当たり外れの乱数は「目標と、その目標への何回目の照射か」で決まります。並べ方が違っても、同じ照射は同じ結果になります。</li>
+        <li>緊急タスクは、シナリオに書いたイベントです（要求時刻の少し前に通知され、スラックがありません）。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>固定タスクの優先順位</h2>
+      <ul class="plain">
+        <li>高い順に、緊急 ＞ 確認照射 ＞ 再照射 ＞ 高機動の追尾更新 ＞ 追尾更新。</li>
+        <li>確認・精密追尾・通常追尾の順は、Han (2024) の表1に合わせました。</li>
+        <li>再照射の位置は本ツールが決めました。既存の航跡が1回外した直後で、逃すとロストに近づくので通常の更新より上、航跡の予測がまだ残っているので確認より下、という理由です。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>動的RSI：論文が決めていない点の埋め方</h2>
+      <ul class="plain">
+        <li>次の固定タスクの候補は、各キューの先頭1件（最遅開始がいちばん早い要求）です。期限のいちばん早い候補から調べ、上位の候補の前に収まれば選びます（ケース1・2）。</li>
+        <li>ケース2の仮置きは、自分の最遅位置と「上位の最遅開始 − 自分の長さ」の早い方です。ケース3で返された要求は待ち行列に残り、許容範囲を過ぎた時点で取りこぼしになります。</li>
+        <li>不足量は、箱を決めた時点で1回だけ計算します。パターン開始時刻は、前の一巡が終わった時刻です。</li>
+        <li>箱の最大長（既定 150 ms）：最遅位置に置くと箱が最大長を超える固定タスクは候補にせず、捜索だけで箱を閉じます。</li>
+        <li>連結：次の固定タスクの直後に、許容範囲がその時刻を含む要求を期限の早い順に続けます。</li>
+        <li>割り込み：通知の時点で始まっていないものはキューへ戻し、実行中のドウェルは完了させ、緊急タスクを軸に箱を組み直します。</li>
+        <li>「＋先読み」が足した処理：仮置きを、待っている後続の固定タスクが入るぶん手前にずらすこと。連結のとき、待っている要求すべてを見て、上位の要求がその後も間に合うかを確かめること。過負荷では、箱の実行中に届いた上位の要求（主に再照射）までは守れません。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>余った時間の扱いと、隙間・余裕</h2>
+      <ul class="plain">
+        <li>既定は「捜索は所望のペースまで」です（論文の「不足量がゼロになるまで」）。捜索が足りているときの空きは「余裕」と呼び、隙間には数えません。</li>
+        <li>「埋め切る」に切り替えると、不足量にかかわらず空きを捜索で埋めます。残った空きはすべて隙間です。</li>
+        <li>隙間は「入れたかったが入らなかった時間」。スケジューラ効率は論文どおり、（全時間 − 隙間）÷ 全時間です。</li>
+        <li>この設定は、すべての並べ方に共通で効きます。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>従来型の定義</h2>
+      <ul class="plain">
+        <li>論文の記述は「固定長の区間を、優先度の高いキューから順に埋める」までです。残りは、従来型が不当に不利にならないことを基準に本ツールが置きました。</li>
+        <li>箱は固定長（100 ms）。固定タスクは優先度順に要求時刻に置き、ふさがっていればスラック内でいちばん近い空きに置きます。</li>
+        <li>箱の境界をまたぐ配置はしません。入らなければ次の箱へ持ち越し、間に合わなければ取りこぼしです。</li>
+        <li>捜索が求める本数は動的RSIと同じ計算です。違いは、優先度順に入れることと、寄せて隙間を閉じないことだけです。</li>
       </ul>
     </div>
     <div class="card">
@@ -429,8 +485,18 @@
     </div>
     <div class="card">
       <h2>文献</h2>
-      <p>M. R. Smouse, E. P. Liu, J. J. Sylvester, “Integrated Air and Missile Defense Resource Management,” <i>Johns Hopkins APL Technical Digest</i>, vol. 35, no. 2, pp. 99–106, 2020. www.jhuapl.edu/techdigest</p>
-      <p class="note">ほかの文献は、対応する章を作るときに原典を確認してから載せます。</p>
+      <p class="note">原文を確認できたものだけを載せています。</p>
+      <ul class="plain">
+        <li>M. R. Smouse, E. P. Liu, J. J. Sylvester, “Integrated Air and Missile Defense Resource Management,” <i>Johns Hopkins APL Technical Digest</i>, vol. 35, no. 2, pp. 99–106, 2020. www.jhuapl.edu/techdigest　— 動的RSI（1章）。</li>
+        <li>Han, “Dynamic Adaptive Resource Scheduling for Phased Array Radar: Enhancing Efficiency through Synthesis Priorities and Pulse Interleaving,” arXiv:2409.19201, 2024.　— パルスインターリーブの考え方、優先順位の表。査読前のプレプリントです。</li>
+        <li>Durst &amp; Brüggenwirth, arXiv:2010.10210／Müller ほか, arXiv:2303.01872.　— 配る層の手順の骨格（Q-RAM をレーダに使った論文。Q-RAM の記述は要約の水準）。</li>
+      </ul>
+      <h3>原文を確認できていないもの（文献としては載せません）</h3>
+      <ul class="plain">
+        <li>2勾配ベネフィット関数：P. W. Moo の技術報告書（DRDC Ottawa TM 2010-259）、同題の査読論文、書籍。二次要約だけに基づいています。</li>
+        <li>Q-RAM の原論文（Rajkumar ほか 1997、Ghosh ほか 2006）。</li>
+        <li>到着順、固定テンプレート、固定優先度、最早期限優先、タイムバランスは、名前の示す規則を本ツールが書いたもので、特定の文献に基づきません。</li>
+      </ul>
     </div>
   </section>
 
