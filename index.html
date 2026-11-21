@@ -142,11 +142,15 @@
         <span><i class="box" style="background:var(--s-urgent)"></i>緊急</span>
         <span><i class="box" style="border:1px solid var(--ink2)"></i>許容範囲（縦線が要求時刻）</span>
         <span id="lgTentative"><i class="box" style="border:1px dashed var(--s-track)"></i>仮置き</span>
-        <span id="lgHill" hidden><svg width="18" height="11" viewBox="0 0 18 11" aria-hidden="true"><path d="M1 10L1 7L9 1L17 7L17 10Z" fill="var(--s-track)" fill-opacity=".3" stroke="var(--s-track)"/></svg>ベネフィットの山（頂上が希望時刻）</span>
+        <span id="lgHill" hidden><svg width="18" height="11" viewBox="0 0 18 11" aria-hidden="true"><path d="M1 10L1 7L9 1L17 7L17 10Z" fill="var(--s-track)" fill-opacity=".3" stroke="var(--s-track)"/></svg>ベネフィットの山（上の拡大図）</span>
         <span><i class="box" style="background:var(--over)"></i>隙間</span>
         <span><b class="x">✕</b> 外れ・取りこぼし</span>
       </div>
-      <p class="note" id="tsbfNote" hidden><b>原文未確認の要約に基づく実装です。</b>山の形は模式図です。高さは本ツールが優先順位から置いたピーク、傾きは全照射で共通にしています。破線の薄い山は、選別で外れた要求です。</p>
+      <div id="hillWrap" hidden>
+        <h3>いまの窓の照射（拡大）</h3>
+        <canvas id="hillCv" role="img" aria-label="いまの窓に入っている照射のベネフィットの山と、決まった開始位置"></canvas>
+        <p class="note" id="tsbfNote"><b>原文未確認の要約に基づく実装です。</b>1行が照射1つで、希望時刻の早い順です。山は、縦線の希望時刻で最大、前後にずれるほど下がるベネフィットで、山の裾が許容範囲です。山の形は模式図で、高さは本ツールが優先順位から置いたピーク、傾きは全照射で共通です。破線の山は、選別で外れた照射です。点線の縦線は窓の境界、いちばん下の「並び」は決まった配置です。</p>
+      </div>
       <canvas id="cv" role="img" aria-label="目標ごとの要求と照射、捜索、箱の組み立てを示すタイムライン"></canvas>
       <div id="caption" aria-live="polite"></div>
       <div class="player">

@@ -9,7 +9,7 @@ import type { BoxRecord, PlanStep, SimConfig, SimResult, Us } from './engine/typ
 import { METHODS, PHASES, STATES, describe, lifeOf, msTxt, phaseOf } from './ui/text.ts';
 import type { LifeEvent, MethodId } from './ui/text.ts';
 import { drawLab, labView } from './ui/lab.ts';
-import { drawStrip, drawTimeline } from './ui/timeline.ts';
+import { drawHills, drawStrip, drawTimeline } from './ui/timeline.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const SEED = 11;
@@ -121,12 +121,16 @@ function current(): { box: BoxRecord; step: PlanStep; k: number } {
   const box = sim.boxes[lo], k = Math.min(st.g - box.gsBase, box.steps.length - 1);
   return { box, step: box.steps[k], k };
 }
-/** The benefit hills to draw for the two-slope view: the window's requests, dimmed once they are left out. */
-function hillsOf(box: BoxRecord, k: number): { ids: number[]; out: Set<number> } | null {
-  const first = box.steps[0];
-  if (first.kind !== 'tsbfCollect') return null;
-  const sel = box.steps[1];
-  return { ids: first.cands, out: new Set(k >= 1 && sel.kind === 'tsbfSelect' ? sel.out.map((o) => o.id) : []) };
+/** Two-slope view: the enlarged picture of the current window's looks, as far as the steps have got. */
+function drawWindowHills(box: BoxRecord, k: number): void {
+  const first = box.steps[0], on = first.kind === 'tsbfCollect' && first.cands.length > 0;
+  $('hillWrap').hidden = !on;
+  if (first.kind !== 'tsbfCollect' || !on) return;
+  const sel = box.steps[1], asg = box.steps[2];
+  const FATE = { carry: '次の窓へ', boundary: '取りこぼし', conflict: '取りこぼし', timeout: '取りこぼし' } as const;
+  drawHills($<HTMLCanvasElement>('hillCv'), st.sim!, { start: box.start, end: first.end, ids: first.cands,
+    out: k >= 1 && sel.kind === 'tsbfSelect' ? new Map(sel.out.map((x) => [x.id, FATE[x.fate]])) : null,
+    starts: k >= 2 && asg.kind === 'tsbfAssign' ? new Map(asg.starts.map((x) => [x.id, x.start])) : null });
 }
 function drawStage(): void {
   const sim = st.sim;
@@ -136,7 +140,8 @@ function drawStage(): void {
   const cursor: Us = windowed ? (last ? box.end : box.start)
     : Math.max(box.start, ...sim.timeline.filter((x) => x.box === bi && x.gs <= st.g).map((x) => x.start + x.len));
   drawTimeline($<HTMLCanvasElement>('cv'), { sim, x0: st.hand ? -HAND_BACK : box.start - BACK, span: st.hand ? HAND_SPAN : SPAN, targets: sim.scenario.targets.map((_, i) => i),
-    seen: { gs: st.g }, cursor, regions: true, box: { rec: box, k }, boxRow: true, hills: hillsOf(box, k) });
+    seen: { gs: st.g }, cursor, regions: true, box: { rec: box, k }, boxRow: true });
+  drawWindowHills(box, k);
   const phases = PHASES[sim.config.scheduler === 'legacy' ? 'legacy' : sim.config.scheduler === 'tsbf' ? 'tsbf' : 'drsi'], on = phaseOf(step), cap = describe(sim, step, box);
   const row = (label: string, lines: string[]): string => (lines.length ? `<dt>${label}</dt><dd>${lines.join('<br>')}</dd>` : '');
   $('caption').innerHTML = `<ol class="phases">${phases.map((p, i) => `<li${i === on ? ' aria-current="step"' : ''}>${'①②③④'[i]} ${p}</li>`).join('')}</ol>` +
@@ -172,7 +177,7 @@ function rebuild(at: Us | null = null, pick: ((sim: SimResult) => BoxRecord | un
   $('methods').querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.method === st.method)));
   $('lgTentative').hidden = st.method === 'legacy' || st.method === 'tsbf'; // only the dynamic RSI places tentatively
   $('lgHill').hidden = st.method !== 'tsbf';
-  $('tsbfNote').hidden = st.method !== 'tsbf';
+  if (st.method !== 'tsbf') $('hillWrap').hidden = true;
   const typical = (b: BoxRecord): boolean => b.start >= ms(1200) && (sim.config.scheduler === 'legacy' || (b.steps[0].kind === 'tsbfCollect' && b.steps[0].cands.length >= 2) || (b.steps[0].kind === 'select' && b.steps[0].nft !== null));
   const box = pick?.(sim) ?? (at !== null ? [...sim.boxes].reverse().find((b) => b.start <= at) : sim.boxes.find(typical));
   go(box ? box.gsBase : 0);
