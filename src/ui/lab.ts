@@ -112,6 +112,8 @@ function drawLoad(): void {
   $('verdict2').innerHTML = verdict(r);
   player('play2', 'sel2');
   drawStrip($<HTMLCanvasElement>('strip2'), r.sim, k * 1e6, 1e6);
+  $('toSlow').textContent = `この1秒（${k}〜${k + 1} 秒）を、1章のスローモーションで見る ▶`;
+  $('toSlowNote').textContent = ['plus', 'paper', 'legacy'].includes(state.method) ? '' : `スローモーションで1手ずつ見られるのは、動的RSIの2つと従来型です。「${labOf(state.method).label}」を選んでいるので、同じ状況を「動的RSI＋先読み」で開きます。`;
   $('read2').innerHTML = `${k}〜${k + 1} 秒：入れたい量 <b>${pc(demand[k])}</b> → ${reading(r, k)}`;
   const s = r.sum, row = (a: string, b: string): string => `<dt>${a}</dt><dd>${b}</dd>`;
   $('kpi2').innerHTML =
@@ -217,6 +219,10 @@ function drawSweep(): void {
     sw.a.map((p, i) => `<tr><td>${p.n}</td><td>${pc(p.search)}</td><td>${pc(p.drop, 1)}</td><td>${pc(sw.b[i].search)}</td><td>${pc(sw.b[i].drop, 1)}</td></tr>`).join('') + '</tbody>';
 }
 
+/** What chapter 2 is showing, for the jump into the slow-motion view of chapter 1. */
+export function labView(): { sc: Scenario; at: number; method: LabId; label: string; conv: SimConfig['conv'] } {
+  return { sc: situation().sc, at: state.sel * 1e6, method: state.method, label: `2章「${presetOf().label}」の ${state.sel}〜${state.sel + 1} 秒`, conv: conv() };
+}
 let shown = 0;
 function redraw(): void { if (shown === 2) drawLoad(); else if (shown === 3) drawCompare(); }
 export function drawLab(chapter: number): void {

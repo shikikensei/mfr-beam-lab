@@ -107,7 +107,7 @@ export function drawTimeline(cv: HTMLCanvasElement, v: TimelineView): void {
   c.strokeStyle = C.ink; c.lineWidth = 1; c.beginPath(); c.moveTo(X(v.cursor) + 0.5, 0); c.lineTo(X(v.cursor) + 0.5, yEnd); c.stroke();
   const fine = v.span <= ms(300), tick = v.span > ms(1500) ? ms(500) : fine ? ms(20) : ms(100);
   c.font = '11px ' + mono; c.fillStyle = C.mut; c.textAlign = 'center';
-  for (let t = Math.ceil(v.x0 / tick) * tick; t < v.x0 + v.span - tick / 5; t += tick) if (t >= 0) c.fillText(fine ? t / 1000 + (t + tick >= v.x0 + v.span - tick / 5 ? ' ms' : '') : (t / 1e6).toFixed(1) + ' s', X(t), H - 4);
+  for (let t = Math.ceil(v.x0 / tick) * tick; t < v.x0 + v.span - tick / 5; t += tick) if (t >= 0 && X(t) >= L + (fine ? 4 : 16) && X(t) <= W - Rm - 16) c.fillText(fine ? t / 1000 + (t + tick >= v.x0 + v.span - tick / 5 ? ' ms' : '') : (t / 1e6).toFixed(1) + ' s', X(t), H - 4);
   c.restore();
   c.textAlign = 'left'; c.textBaseline = 'middle';
   v.targets.forEach((id, row) => {

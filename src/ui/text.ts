@@ -99,6 +99,7 @@ export function describe(sim: SimResult, step: PlanStep, box: BoxRecord): Captio
         did.push('固定タスクなしで箱を閉じた。');
         if (step.spare) result.push(`頼むものがなく、${msTxt(step.spare)} は余裕として空いた。`);
         if (step.gap) result.push(`${msTxt(step.gap)} は捜索が入らず、隙間になった。`);
+        if (!step.gap && !step.spare) result.push('箱は捜索で埋まり、隙間は残らなかった。');
         break;
       }
       const q = R[step.nft];

@@ -132,6 +132,7 @@
     </div>
 
     <div class="card" id="stage">
+      <p class="from" id="fromLab" hidden><span id="fromLabText"></span><button type="button" class="ghost" id="fromLabBack">◀ 2章へ戻る</button><button type="button" class="ghost" id="fromLabReset">説明用シナリオに戻す</button></p>
       <div class="seg" id="methods" role="radiogroup" aria-label="方式"></div>
       <div class="legend">
         <span><i class="box" style="background:var(--s-search)"></i>捜索</span>
@@ -139,7 +140,7 @@
         <span><i class="box" style="background:var(--s-aux)"></i>探知◆・確認照射</span>
         <span><i class="box" style="background:var(--s-urgent)"></i>緊急</span>
         <span><i class="box" style="border:1px solid var(--ink2)"></i>許容範囲（縦線が要求時刻）</span>
-        <span><i class="box" style="border:1px dashed var(--s-track)"></i>仮置き</span>
+        <span id="lgTentative"><i class="box" style="border:1px dashed var(--s-track)"></i>仮置き</span>
         <span><i class="box" style="background:var(--over)"></i>隙間</span>
         <span><b class="x">✕</b> 外れ・取りこぼし</span>
       </div>
@@ -192,6 +193,8 @@
       </div>
       <canvas id="strip2" role="img" aria-label="選んだ1秒間のビームの使い道"></canvas>
       <p class="note" id="read2" aria-live="polite"></p>
+      <div class="partnext"><button type="button" id="toSlow"></button></div>
+      <p class="note" id="toSlowNote"></p>
       <p class="note">「入れたい量」は、捜索を所望のペースで回す時間と、いる目標すべてを更新間隔どおりに追う時間の合計です。確認照射と再照射は含みません（並べ方の結果で変わるため）。柱は左右になぞると選べます。</p>
     </div>
     <div class="card">
@@ -316,7 +319,7 @@
         <li>捜索のビームは、所望のペースで回したときにそのビームを終えているべき時刻から「用意ができた」とみなします。期限はそこから1ビームぶん後です。</li>
         <li>遅れている捜索のビームは、既定では「いま用意ができた」ものとして扱い、遅れを持ち越しません（3章で切り替えられます）。動的RSIの不足量もパターンの一巡ごとに数え直すので、扱いを揃えました。この取り決めは5つに共通で、方式ごとに有利な組み合わせは選んでいません。</li>
         <li>この取り決めで、到着順・最早期限優先・タイムバランスの取りこぼしは大きく変わります。飽和する状況（4種の平均）では、遅れを覚えておくと要求の 28〜42 %、覚えないと 2〜4 % でした。最早期限優先は、捜索ビームの期限を 0.3〜12 ビームぶんに変えるだけでも 1006〜286 件の幅で動きます。</li>
-        <li>設定を変えても残る違いは2つです。隙間が出るのは従来型と固定テンプレートだけであること。捜索を削るとき、動的RSIは領域を均等に削り、ほかは優先度の低い領域に偏ること。</li>
+        <li>設定を変えても残る違いは2つです。隙間が出るのは、決まった長さの枠や窓で区切る並べ方（従来型、固定テンプレート、2勾配ベネフィット）だけであること。捜索を削るとき、動的RSIは領域を均等に削り、ほかは優先度の低い領域に偏ること。</li>
         <li>タイムバランスの「周期」は、追尾は更新間隔、確認照射と再照射は要求までの待ち時間、捜索は1ビームぶんの持ち時間です。この取り方で結果は変わります。</li>
         <li>固定テンプレートは 100 ms 周期で、先頭 40 % が固定タスク用、残りが捜索用です。ドウェルは自分の枠の中で終わらなければ置きません。配分は本ツールが置いた値で、成績はこれに強く左右されます。飽和する状況（4種の平均）で固定タスク用を 20／40／50／60／80 % にすると、取りこぼしは要求の 66／44／35／25／4 %、捜索の実行率は 100／100／100／80／30 %、隙間は 28／12／5／17／42 % でした。配分を変えても残るのは、隙間が出ることです。</li>
         <li>3章の成績表と散布図は、乱数を変えた4回の平均と幅です。柱と帯は、そのうち1回の結果です。</li>

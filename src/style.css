@@ -160,3 +160,16 @@ details .check{margin-top:10px}
 #score td+td{white-space:nowrap}
 .wip{font-size:13px;color:var(--ink2);border:1px solid var(--axis);border-radius:8px;padding:8px 12px;margin:0 0 4px}
 .wip b{display:inline-block;font-size:12px;font-weight:700;color:var(--surface);background:var(--ink2);border-radius:4px;padding:0 6px;margin-right:8px}
+#score{table-layout:fixed}
+#score th:nth-child(1){width:27%}#score th:nth-child(2){width:17%}#score th:nth-child(3){width:15%}#score th:nth-child(4){width:22%}#score th:nth-child(5){width:19%}
+#score small{font-size:10.5px}
+#score td+td{font-size:13px}
+#cmp thead th{white-space:nowrap;vertical-align:bottom}
+#cmp thead small{font-size:10.5px}
+.legend span[hidden]{display:none}
+@media (min-width:700px){.chapnav{flex-wrap:wrap;overflow:visible}}
+.from{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13.5px;background:var(--accent-soft);border-radius:8px;padding:8px 10px}
+.from[hidden]{display:none}
+.from span{flex:1 1 100%}
+.from button{padding:6px 10px;font-size:13px}
+details[hidden]{display:none}

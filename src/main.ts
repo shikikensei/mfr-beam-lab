@@ -8,7 +8,7 @@ import { ms } from './engine/types.ts';
 import type { BoxRecord, PlanStep, SimConfig, SimResult, Us } from './engine/types.ts';
 import { METHODS, PHASES, STATES, describe, lifeOf, msTxt, phaseOf } from './ui/text.ts';
 import type { LifeEvent, MethodId } from './ui/text.ts';
-import { drawLab } from './ui/lab.ts';
+import { drawLab, labView } from './ui/lab.ts';
 import { drawStrip, drawTimeline } from './ui/timeline.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -108,9 +108,11 @@ $('reqPos').addEventListener('input', drawRequest);
 
 // ================= chapter 1, parts 3-5: the stage =================
 const SPAN = ms(600), BACK = ms(200), HAND_SPAN = ms(125), HAND_BACK = ms(5);
-const st = { method: 'plus' as MethodId, sim: null as SimResult | null, g: 0, timer: 0, hand: null as HandCaseId | null };
+const st = { method: 'plus' as MethodId, sim: null as SimResult | null, g: 0, timer: 0, hand: null as HandCaseId | null,
+  /** A situation handed over from chapter 2 (same targets, same seed, same 60 seconds). */
+  ext: null as ReturnType<typeof labView> | null };
 const fillMode = (): SimConfig['fill'] => (st.hand ? HAND_CONFIG.fill : $<HTMLSelectElement>('fill').value as SimConfig['fill']);
-const scenario = () => st.hand ? handScenario(st.hand) : makeScenario({ targets: Number($<HTMLInputElement>('n').value), seed: SEED, criticals: $<HTMLInputElement>('crit').checked ? CRITICALS : [] });
+const scenario = () => st.ext ? st.ext.sc : st.hand ? handScenario(st.hand) : makeScenario({ targets: Number($<HTMLInputElement>('n').value), seed: SEED, criticals: $<HTMLInputElement>('crit').checked ? CRITICALS : [] });
 
 function current(): { box: BoxRecord; step: PlanStep; k: number } {
   const sim = st.sim!;
@@ -142,7 +144,7 @@ function compare(): void {
   const rows = ids.map((id) => summarize(simulate(sc, { ...configOf(id, fillMode()), trace: false })));
   const pc = (x: number): string => (x * 100).toFixed(1) + ' %';
   const line = (label: string, f: (s: (typeof rows)[number]) => string): string => `<tr><td>${label}</td>${rows.map((s) => `<td>${f(s)}</td>`).join('')}</tr>`;
-  $('cmp').innerHTML = `<thead><tr><th></th>${ids.map((id) => `<th>${METHODS[id].label}<br><small>${METHODS[id].note}</small></th>`).join('')}</tr></thead><tbody>` +
+  $('cmp').innerHTML = `<thead><tr><th></th>${ids.map((id) => `<th>${METHODS[id].label.replace('＋', '<br>＋')}<br><small>${METHODS[id].note}</small></th>`).join('')}</tr></thead><tbody>` +
     line('捜索', (s) => pc(s.share.search)) + line('隙間', (s) => pc(s.share.gap)) + line('余裕', (s) => pc(s.share.spare)) +
     line('固定タスク', (s) => pc(s.share.fixed)) +
     sc.regions.map((r, i) => line(`${r.name}の一巡<br><small>所望 ${(r.dft / 1e6).toFixed(1)} s</small>`, (s) => (s.regions[i].meanFrame === null ? '—' : (s.regions[i].meanFrame! / 1e6).toFixed(2) + ' s'))).join('') +
@@ -154,9 +156,13 @@ function compare(): void {
 function rebuild(at: Us | null = null, pick: ((sim: SimResult) => BoxRecord | undefined) | null = null): void {
   stop();
   $('nOut').textContent = $<HTMLInputElement>('n').value;
-  const sim = st.sim = simulate(scenario(), configOf(st.method, fillMode()));
+  const sim = st.sim = simulate(scenario(), { ...configOf(st.method, st.ext ? 'pace' : fillMode()), conv: st.ext?.conv });
+  $('fromLab').hidden = !st.ext;
+  if (st.ext) $('fromLabText').textContent = `${st.ext.label}を表示しています（目標 ${st.ext.sc.targets.length}）。`;
+  $<HTMLElement>('stage').querySelector('details')!.hidden = !!st.ext;
   $<HTMLInputElement>('step').max = String(sim.steps - 1);
   $('methods').querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.method === st.method)));
+  $('lgTentative').hidden = st.method === 'legacy'; // the legacy scheduler has no tentative placement
   const typical = (b: BoxRecord): boolean => b.start >= ms(1200) && (sim.config.scheduler === 'legacy' || (b.steps[0].kind === 'select' && b.steps[0].nft !== null));
   const box = pick?.(sim) ?? (at !== null ? [...sim.boxes].reverse().find((b) => b.start <= at) : sim.boxes.find(typical));
   go(box ? box.gsBase : 0);
@@ -173,6 +179,17 @@ $('methods').addEventListener('click', (e) => {
 });
 for (const id of ['fill', 'crit']) $(id).addEventListener('change', () => rebuild(st.sim ? current().box.start : null));
 $('n').addEventListener('input', () => { leaveHand(); rebuild(); });
+// ---- from chapter 2: the same situation, at the chosen second, one step at a time
+$('toSlow').addEventListener('click', () => {
+  const v = labView();
+  leaveHand(); st.ext = v;
+  st.method = v.method === 'paper' || v.method === 'legacy' ? v.method : 'plus';
+  showChapter(1, false); showPart(3);
+  rebuild(v.at, (sim) => sim.boxes.find((b) => b.end > v.at));
+  $('stage').scrollIntoView({ block: 'start' });
+});
+$('fromLabBack').addEventListener('click', () => showChapter(2));
+$('fromLabReset').addEventListener('click', () => { st.ext = null; rebuild(); });
 $('prev').addEventListener('click', () => { stop(); go(st.g - 1); });
 $('next').addEventListener('click', () => { stop(); go(st.g + 1); });
 $('step').addEventListener('input', () => { stop(); go(Number($<HTMLInputElement>('step').value)); });
@@ -202,7 +219,7 @@ $('scenes').addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('button');
   if (!b) return;
   const sc = SCENES[Number(b.dataset.scene)];
-  leaveHand();
+  leaveHand(); st.ext = null;
   st.method = sc.method;
   $<HTMLInputElement>('n').value = String(sc.n);
   $<HTMLInputElement>('crit').checked = sc.crit;
@@ -246,7 +263,7 @@ function drawHands(): void {
 $('hands').addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('button');
   if (!b) return;
-  st.hand = b.dataset.hand as HandCaseId;
+  st.ext = null; st.hand = b.dataset.hand as HandCaseId;
   st.method = 'paper';
   $('scenes').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', 'false'));
   $('hands').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
@@ -261,6 +278,7 @@ const PART_NAMES = ['', '① 目標の一生', '② 要求の一生', '③ 箱�
 function showPart(p: number, scroll = false): void {
   part = p; stop();
   if (p !== 5 && st.hand) { leaveHand(); st.sim = null; }
+  if (p !== 3 && st.ext) { st.ext = null; st.sim = null; }
   document.querySelectorAll<HTMLElement>('.part').forEach((x) => { x.hidden = Number(x.dataset.part) !== p; });
   $('parts').querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(Number(b.dataset.part) === p)));
   $('stage').hidden = p < 3;
