@@ -79,7 +79,7 @@ export function lineChart(host: HTMLElement, o: { label: string; series: Series[
   svg.addEventListener('pointermove', (ev) => { if (ev.buttons || ev.pointerType === 'touch') pick(ev); });
 }
 
-export interface ScatterPoint { name: string; x: number; y: number; fromX: number; fromY: number }
+export interface ScatterPoint { name: string; x: number; y: number; xr: [number, number]; yr: [number, number]; fromX: number; fromY: number }
 
 /**
  * Search served (x) against fixed tasks dropped (y), one named point per scheduler. Names sit in a
@@ -90,7 +90,7 @@ export interface ScatterPoint { name: string; x: number; y: number; fromX: numbe
 export function scatterChart(host: HTMLElement, o: { label: string; points: ScatterPoint[] }): void {
   const W = host.clientWidth || 320, m = { l: 40, r: 100, t: 26, b: 34 }, rowH = 17, XMIN = 40;
   const H = Math.max(230, m.t + m.b + o.points.length * rowH + 8);
-  const ymax = Math.max(10, Math.ceil(Math.max(...o.points.flatMap((p) => [p.y, p.fromY])) / 10) * 10);
+  const ymax = Math.max(10, Math.ceil(Math.max(...o.points.flatMap((p) => [p.yr[1], p.fromY])) / 10) * 10);
   const X = (v: number): number => m.l + ((Math.max(XMIN, Math.min(100, v)) - XMIN) / (100 - XMIN)) * (W - m.l - m.r);
   const Y = (v: number): number => H - m.b - (v / ymax) * (H - m.t - m.b);
   const t = (x: number, y: number, txt: string, anchor = 'middle', fill = '--muted', size = 11, fam = '--mono'): string =>
@@ -111,6 +111,8 @@ export function scatterChart(host: HTMLElement, o: { label: string; points: Scat
     }
     s += `<path d="M${px} ${py}L${lx - 8} ${ly - 4}L${lx - 2} ${ly - 4}" fill="none" stroke="var(--axis)"/>` + t(lx, ly, p.name, 'start', '--ink', 12, '--font');
   });
+  // whiskers: smallest to largest value over the seeds
+  for (const p of o.points) s += `<path d="M${X(p.xr[0])} ${Y(p.y)}H${X(p.xr[1])}M${X(p.x)} ${Y(p.yr[0])}V${Y(p.yr[1])}" stroke="var(--accent)" stroke-width="1.5"/>`;
   for (const p of o.points) s += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`;
   host.innerHTML = s + '</svg>';
 }

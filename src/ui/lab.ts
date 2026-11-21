@@ -14,7 +14,9 @@ import type { LabId } from './text.ts';
 import { drawStrip } from './timeline.ts';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
-const SEED = 11, DURATION = ms(60000);
+const SEED = 11, SEEDS = [11, 12, 13, 14], DURATION = ms(60000);
+/** The schedulers the search-lateness convention applies to. */
+const SIMPLE = Object.assign(new Set<string>(['fifo', 'template', 'priority', 'edf', 'balance']), { conv: true });
 const pc = (x: number, d = 0): string => (x * 100).toFixed(d) + ' %';
 
 interface Preset { id: string; label: string; note: string; opt: Omit<ScenarioOptions, 'seed' | 'duration'> }
@@ -141,24 +143,45 @@ function sweepOf(): NonNullable<typeof sweep> {
   return (sweep = { key, a: line(state.a), b: line(state.b), full });
 }
 
+interface Spread { mean: number; min: number; max: number }
+interface Stats { search: Spread; hi: number; lo: number; gap: number; drop: Spread; upper: Spread; share: Spread }
+const spread = (v: number[]): Spread => ({ mean: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v) });
+const statCache = new Map<string, Stats>();
+/** The scoreboard numbers over several seeds, so that seed-to-seed scatter is not read as a ranking. */
+function stats(id: LabId, keep = state.keep): Stats {
+  const key = [state.preset, id, SIMPLE.has(id) ? keep : '-'].join('|');
+  let st = statCache.get(key);
+  if (!st) {
+    const all = SEEDS.map((seed) => {
+      const sc = seed === SEED ? situation().sc : makeScenario({ ...presetOf().opt, seed, duration: DURATION });
+      return seed === SEED ? run(id, keep).sum : summarize(simulate(sc, { ...DEFAULT_CONFIG, ...labOf(id).cfg, conv: conv(keep) }));
+    });
+    const want = situation().search, avg = (f: (s: Summary) => number): number => spread(all.map(f)).mean;
+    st = { search: spread(all.map((s) => (s.share.search / want) * 100)), hi: avg((s) => s.regions[0].served * 100), lo: avg((s) => s.regions[s.regions.length - 1].served * 100),
+      gap: avg((s) => s.share.gap * 100), drop: spread(all.map((s) => s.fixed.dropped)), upper: spread(all.map((s) => s.fixed.upperDropped)),
+      share: spread(all.map((s) => (s.fixed.requested ? (s.fixed.dropped / s.fixed.requested) * 100 : 0))) };
+    statCache.set(key, st);
+  }
+  return st;
+}
 const short = (label: string): string => label.replace(/（(.+)）$/, '<small>$1</small>');
 function drawCompare(): void {
   presetButtons($('presets3'), $('presetNote3'));
   $('score').innerHTML = '<thead><tr><th>並べ方</th><th>捜索</th><th>隙間</th><th>取りこぼし</th><th>うち上位</th></tr></thead><tbody>' +
     LAB.map((m) => {
-      const s = run(m.id).sum, tag = m.id === state.a ? 'A ' : m.id === state.b ? 'B ' : '';
-      return `<tr><td>${tag ? `<b>${tag}</b>` : ''}${short(m.label)}</td><td>${pc(s.share.search / situation().search)}<small>${s.regions.map((g) => (g.served * 100).toFixed(0)).join('／')}</small></td>` +
-        `<td>${pc(s.share.gap, 1)}</td><td>${s.fixed.dropped}</td><td>${s.fixed.upperDropped}</td></tr>`;
+      const s = stats(m.id), tag = m.id === state.a ? 'A ' : m.id === state.b ? 'B ' : '', n0 = (x: number): string => x.toFixed(0);
+      return `<tr><td>${tag ? `<b>${tag}</b>` : ''}${short(m.label)}</td><td>${n0(s.search.mean)} %<small>${n0(s.hi)}／${n0(s.lo)}</small></td>` +
+        `<td>${s.gap.toFixed(1)} %</td><td>${n0(s.drop.mean)}<small>${n0(s.drop.min)}〜${n0(s.drop.max)}</small></td><td>${n0(s.upper.mean)}<small>${n0(s.upper.min)}〜${n0(s.upper.max)}</small></td></tr>`;
     }).join('') + '</tbody>';
   const kb = $<HTMLSelectElement>('keep');
   if (!kb.dataset.wired) { kb.dataset.wired = '1'; kb.addEventListener('change', () => { state.keep = kb.value === 'keep'; sweep = null; redraw(); }); }
   kb.value = state.keep ? 'keep' : 'forget';
-  const dropShare = (s: Summary): number => (s.fixed.requested ? (s.fixed.dropped / s.fixed.requested) * 100 : 0);
   scatterChart($('scatter'), {
-    label: '並べ方ごとの、捜索の実行率と固定タスクの取りこぼしの割合',
+    label: '並べ方ごとの、捜索の実行率と固定タスクの取りこぼしの割合（乱数4種の平均と幅）',
     points: LAB.map((m) => {
-      const now = run(m.id).sum, other = run(m.id, !state.keep).sum, x = (s: Summary): number => (s.share.search / situation().search) * 100;
-      return { name: m.label.replace(/（.+）$/, '').replace('動的RSI＋先読み', '＋先読み').replace('固定テンプレート', 'テンプレート').replace('最早期限優先', '最早期限'), x: x(now), y: dropShare(now), fromX: x(other), fromY: dropShare(other) };
+      const now = stats(m.id), other = 'conv' in SIMPLE && SIMPLE.has(m.id) ? stats(m.id, !state.keep) : now;
+      return { name: m.label.replace(/（.+）$/, '').replace('動的RSI＋先読み', '＋先読み').replace('固定テンプレート', 'テンプレート').replace('最早期限優先', '最早期限'),
+        x: now.search.mean, y: now.share.mean, xr: [now.search.min, now.search.max], yr: [now.share.min, now.share.max], fromX: other.search.mean, fromY: other.share.mean };
     }),
   });
   methodSelect('labA', 'a'); methodSelect('labB', 'b');
