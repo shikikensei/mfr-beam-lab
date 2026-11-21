@@ -4,7 +4,8 @@
 // Sources: only the outline of the method, as described in two papers that apply it to radar
 // (Durst & Brueggenwirth, arXiv:2010.10210; Mueller et al., arXiv:2303.01872): turn the settings
 // into (resource, utility) points, keep the upper concave hull, then upgrade the task with the
-// largest utility gain per unit of resource until the limit is reached. The original Q-RAM
+// largest utility gain per unit of resource, trying the next best when one does not fit, until
+// no upgrade fits. The original Q-RAM
 // papers (Rajkumar et al. 1997; Ghosh et al. 2006) have NOT been read. The quality and utility
 // functions below are this tool's own, made up for explanation.
 import { ms } from './types.ts';
@@ -34,23 +35,29 @@ export interface Allocation { feasible: boolean; choice: Setpoint[]; used: numbe
 
 /**
  * Start every task at its cheapest setting, then repeatedly apply the single upgrade (one step
- * along some task's hull) with the largest utility gain per unit of resource. Stop at the first
- * upgrade that does not fit. Not guaranteed optimal.
+ * along some task's hull) with the largest utility gain per unit of resource. If that upgrade
+ * does not fit, the task with the next best ratio is tried; the loop ends when no upgrade fits.
+ * (Durst & Brueggenwirth, section IV-A: "If an upgrade is not possible, the task with the next
+ * best ratio is tried to upgrade. The above step is repeated until upgrades are no longer
+ * possible".) Not guaranteed optimal: the same paper calls the solution "only of an heuristic nature".
+ * `stopAtFirst` reproduces this tool's earlier reading (stop at the first upgrade that does not
+ * fit), kept only so that the difference can be measured.
  */
-export function allocate(tasks: QTask[], limit: number): Allocation {
+export function allocate(tasks: QTask[], limit: number, stopAtFirst = false): Allocation {
   const hulls = tasks.map((t) => hull(t.points)), at = tasks.map(() => 0);
   let used = hulls.reduce((a, h) => a + h[0].r, 0), upgrades = 0;
   const feasible = used <= limit + 1e-12;
+  const stuck = new Set<number>(); // tasks whose next upgrade does not fit; what is left only shrinks, so they stay stuck
   while (feasible) {
     let best = -1, slope = 0;
     hulls.forEach((h, i) => {
-      if (at[i] + 1 >= h.length) return;
+      if (stuck.has(i) || at[i] + 1 >= h.length) return;
       const s = (h[at[i] + 1].u - h[at[i]].u) / (h[at[i] + 1].r - h[at[i]].r);
       if (s > slope) { slope = s; best = i; }
     });
     if (best < 0) break;
     const dr = hulls[best][at[best] + 1].r - hulls[best][at[best]].r;
-    if (used + dr > limit + 1e-12) break;
+    if (used + dr > limit + 1e-12) { if (stopAtFirst) break; stuck.add(best); continue; }
     at[best]++; used += dr; upgrades++;
   }
   const choice = hulls.map((h, i) => h[at[i]]);

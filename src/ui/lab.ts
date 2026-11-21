@@ -250,6 +250,37 @@ function drawCompare(): void {
   // the sweep is not needed until its charts scroll into view
   if (!sweepWatch) { sweepWatch = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { sweepSeen = true; if (shown === 3) drawSweep(); } }, { rootMargin: '200px' }); sweepWatch.observe($('swSearch')); }
   if (sweepSeen) drawSweep();
+  if (!farWatch) { farWatch = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { farSeen = true; if (shown === 3) drawFar(); } }, { rootMargin: '200px' }); farWatch.observe($('farCurve')); }
+  if (farSeen) drawFar();
+}
+// ---- how the effect of interleaving depends on the share of far targets (a value this tool chose)
+const FAR_SHARES = [0, 0.2, 0.4, 0.8, 1];
+const farCache = new Map<string, { il: number[]; base: number }>();
+let farWatch: IntersectionObserver | null = null, farSeen = false;
+function drawFar(): void {
+  const host = $('farCurve'), opt = presetOf().opt, key = [state.preset, state.alloc, state.seed].join('|');
+  let d = farCache.get(key);
+  if (!d) {
+    const mean = (id: LabId, farFrac: number): number => [0, 1, 2, 3].reduce((a, k) =>
+      a + summarize(simulate(build({ ...opt, farFrac, seed: state.seed + k, duration: DURATION }), cfgOf(id))).fixed.dropped, 0) / 4;
+    d = { il: FAR_SHARES.map((f) => mean('interleave', f)), base: mean('priority', 0) };
+    farCache.set(key, d);
+  }
+  const W = host.clientWidth || 300, H = 150, m = { l: 34, r: 16, t: 22, b: 30 }, ymax = Math.max(10, d.base, ...d.il) * 1.15;
+  const X = (f: number): number => m.l + f * (W - m.l - m.r), Y = (v: number): number => H - m.b - (v / ymax) * (H - m.t - m.b);
+  const t = (x: number, y: number, txt: string, a = 'middle', fill = '--muted', fam = '--mono'): string => `<text x="${x}" y="${y}" text-anchor="${a}" fill="var(${fill})" font-size="11" font-family="var(${fam})">${txt}</text>`;
+  const here = opt.farFrac ?? 0.4;
+  let g = `<svg width="${W}" height="${H}" role="img" aria-label="遠距離の目標の割合と、固定タスクの取りこぼし件数">`;
+  g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--axis)"/>` + t(m.l - 5, Y(0) + 4, '0', 'end');
+  g += `<line x1="${X(here)}" x2="${X(here)}" y1="${m.t - 6}" y2="${Y(0)}" stroke="var(--line)"/>` + t(X(here), m.t - 10, 'この状況', here > 0.7 ? 'end' : 'middle', '--ink2', '--font');
+  g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(d.base)}" y2="${Y(d.base)}" stroke="var(--ink2)" stroke-width="2" stroke-dasharray="6 4"/>` + t(W - m.r, Y(d.base) - 5, `固定優先度 ${d.base.toFixed(0)} 件`, 'end', '--ink2', '--font');
+  g += `<path d="${FAR_SHARES.map((f, i) => `${i ? 'L' : 'M'}${X(f).toFixed(1)} ${Y(d!.il[i]).toFixed(1)}`).join('')}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+  FAR_SHARES.forEach((f, i) => {
+    g += `<circle cx="${X(f)}" cy="${Y(d!.il[i])}" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>` + (i ? t(X(f), Y(d!.il[i]) - 8, d!.il[i].toFixed(0), 'middle', '--ink') : '') + t(X(f), H - m.b + 14, `${f * 100}%`);
+  });
+  g += t((m.l + W - m.r) / 2, H - 2, '遠距離の目標の割合', 'middle', '--ink2', '--font');
+  host.innerHTML = g + '</svg>';
+  $('farRead').textContent = `実線が「固定優先度＋インターリーブ」の取りこぼし件数、破線が固定優先度です（60秒、乱数4種の平均）。遠距離の目標がなければ両者は同じで、割合が増えるほど差が開きます。`;
 }
 let sweepWatch: IntersectionObserver | null = null, sweepSeen = false;
 function drawSweep(): void {

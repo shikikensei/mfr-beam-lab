@@ -75,7 +75,8 @@ npm run build  # dist/index.html を1ファイルで出力
 - Han, “Dynamic Adaptive Resource Scheduling for Phased Array Radar: Enhancing Efficiency through Synthesis Priorities and Pulse Interleaving,” arXiv:2409.19201, 2024.
   - 「固定優先度＋インターリーブ」は、この論文のパルスインターリーブの考え方を単純化したものです（送信機のエネルギー制約は省略）。固定タスクの優先順位（確認 ＞ 精密追尾 ＞ 通常追尾）も表1を参照しました。査読前のプレプリントで、式どおりの再現ではありません。
 
-- Durst & Brüggenwirth, arXiv:2010.10210／Müller ほか, arXiv:2303.01872.
+- S. Durst, S. Brüggenwirth, “Quality of service based radar resource management using deep reinforcement learning,” arXiv:2010.10210, 2020（2021 IEEE Radar Conference）.
+- T. Müller, S. Durst, P. Marquardt, S. Brüggenwirth, “Quality of service based radar resource management for synchronisation problems,” arXiv:2303.01872, 2023（2023 IEEE WiSNeT）.
   - 4章の配る層の手順の骨格（Q-RAM をレーダに使った論文）。Q-RAM の記述は要約の水準で、Q-RAM の原論文は確認できていません。
 
 確認できていないもの（2勾配ベネフィット関数の報告書・論文・書籍、Q-RAM の原論文）は載せていません。
