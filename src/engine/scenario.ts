@@ -25,6 +25,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   protect: 'followers',
   rsiLen: ms(100),
   templateShare: 0.4,
+  tsbfWindow: ms(100),
   trace: false,
 };
 

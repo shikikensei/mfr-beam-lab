@@ -45,7 +45,7 @@ describe('dynamic RSI: the four steps', () => {
   it('computes deficits once, serves the largest first, and only as many beams as remove the deficit', () => {
     const regions = [region('X', 10, 10, 1000, 1), region('Y', 10, 10, 1000, 0)];
     // X: wanted (100/1000)*400 = 40 ms, done 10 -> 30 ms behind -> 3 beams. Y: done 35 -> 5 ms behind -> 1 beam.
-    const b = planDrsi(view(400, [], regions, { fill: 'pace' }, [{ pst: 0, done: 10_000, idx: 1 }, { pst: 0, done: 35_000, idx: 3 }]));
+    const b = planDrsi(view(400, [], regions, { fill: 'pace' }, [{ pst: 0, done: 10_000, idx: 1, last: 0 }, { pst: 0, done: 35_000, idx: 3, last: 0 }]));
     const d = b.steps[1];
     expect(d.kind === 'deficit' && d.order).toEqual([0, 1]);
     expect(d.kind === 'deficit' && d.ftd).toEqual([30_000, 5_000]);

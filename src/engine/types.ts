@@ -51,6 +51,8 @@ export interface PatternState {
   /** Sum of event lengths executed in the current frame. */
   done: Us;
   idx: number;
+  /** When the region's most recent beam ended (0 before the first one). */
+  last: Us;
 }
 
 export interface TargetSpec {
@@ -90,7 +92,7 @@ export interface Scenario {
 }
 
 export type FillMode = 'pace' | 'full';
-export type SchedulerId = 'drsi' | 'legacy' | 'fifo' | 'template' | 'priority' | 'edf' | 'balance';
+export type SchedulerId = 'drsi' | 'legacy' | 'fifo' | 'template' | 'priority' | 'edf' | 'balance' | 'tsbf';
 
 export interface SimConfig {
   scheduler: SchedulerId;
@@ -106,6 +108,8 @@ export interface SimConfig {
   rsiLen: Us;
   /** Fixed template: share of each rsiLen cycle reserved for fixed tasks. */
   templateShare: number;
+  /** Two-slope benefit scheduler: length of its scheduling window. */
+  tsbfWindow: Us;
   trace: boolean;
   /** Conventions of the one-dwell schedulers (simple.ts) that can be varied to test their effect. */
   conv?: Partial<Conventions>;

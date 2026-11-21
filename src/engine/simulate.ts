@@ -2,6 +2,7 @@
 // pattern progress, interrupts and the record of what happened. Schedulers only plan boxes.
 import { planDrsi } from './drsi.ts';
 import { planLegacy } from './legacy.ts';
+import { planTsbf } from './tsbf.ts';
 import { planBalance, planEdf, planFifo, planPriority, planTemplate } from './simple.ts';
 import { draw } from './rand.ts';
 import { QUEUES, rankOf } from './types.ts';
@@ -10,14 +11,14 @@ import type {
   RequestRecord, Scenario, SchedulerId, SimConfig, SimResult, Us,
 } from './types.ts';
 
-export const PLANNERS: Record<SchedulerId, Planner> = { drsi: planDrsi, legacy: planLegacy, fifo: planFifo, template: planTemplate, priority: planPriority, edf: planEdf, balance: planBalance };
+export const PLANNERS: Record<SchedulerId, Planner> = { drsi: planDrsi, legacy: planLegacy, fifo: planFifo, template: planTemplate, priority: planPriority, edf: planEdf, balance: planBalance, tsbf: planTsbf };
 
 type TState = 'undetected' | 'confirming' | 'tracked' | 'gone';
 
 export function simulate(sc: Scenario, cfg: SimConfig): SimResult {
   const P = sc.params, plan = PLANNERS[cfg.scheduler];
   const targets = sc.targets.map((spec) => ({ spec, state: 'undetected' as TState, miss: 0, looks: 0, dwells: 0 }));
-  const patterns: PatternState[] = sc.regions.map(() => ({ pst: 0, done: 0, idx: 0 }));
+  const patterns: PatternState[] = sc.regions.map(() => ({ pst: 0, done: 0, idx: 0, last: 0 }));
   const frames: [Us, Us][][] = sc.regions.map(() => []);
   const requests: RequestRecord[] = [], timeline: Interval[] = [], marks: Mark[] = [], boxes: BoxRecord[] = [];
   const pending = new Set<RequestRecord>();
@@ -78,7 +79,7 @@ export function simulate(sc: Scenario, cfg: SimConfig): SimResult {
       tg.state = 'confirming'; mark(end, i, 'detect');
       addRequest('confirm', i, end + P.confirmDelay, P.confirmLead, P.confirmTrail, P.confirmLen, end, P.confirmDelay);
     });
-    pat.done += p.len;
+    pat.done += p.len; pat.last = end;
     if (++pat.idx === reg.beams) { frames[p.region].push([end, end - pat.pst]); pat.pst = end; pat.done = 0; pat.idx = 0; }
   }
   function runFixed(p: Extract<Placement, { type: 'fixed' }>, box: number): void {

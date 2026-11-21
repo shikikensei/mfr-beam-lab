@@ -16,7 +16,7 @@ export function view(now: number, reqs: FixedRequest[], regions: SearchRegion[],
   const queues: FixedRequest[][] = QUEUES.map(() => []);
   for (const r of reqs) queues[r.rank].push(r);
   for (const q of queues) q.sort((a, b) => a.latest - b.latest || a.id - b.id);
-  return { now: ms(now), queues, regions, patterns: patterns ?? regions.map(() => ({ pst: 0, done: 0, idx: 0 })), cfg: { ...DEFAULT_CONFIG, ...cfg } };
+  return { now: ms(now), queues, regions, patterns: patterns ?? regions.map(() => ({ pst: 0, done: 0, idx: 0, last: 0 })), cfg: { ...DEFAULT_CONFIG, ...cfg } };
 }
 /** Start time in ms of a fixed request inside a box, or null if it was not placed. */
 export function startOf(box: Box, r: FixedRequest): number | null {

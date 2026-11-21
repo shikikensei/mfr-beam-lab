@@ -14,6 +14,9 @@ const VARIANTS: [string, Partial<SimConfig>][] = [
   ['legacy, full', { scheduler: 'legacy', fill: 'full' }],
   ...(['fifo', 'template', 'priority', 'edf', 'balance'] as const).flatMap((scheduler): [string, Partial<SimConfig>][] =>
     [[`${scheduler}, pace`, { scheduler, fill: 'pace' }], [`${scheduler}, full`, { scheduler, fill: 'full' }]]),
+  // The two-slope scheduler always fills every opening (its own rule), so only "full" describes it.
+  ['two-slope benefit, 100 ms window', { scheduler: 'tsbf', fill: 'full' }],
+  ['two-slope benefit, 300 ms window', { scheduler: 'tsbf', fill: 'full', tsbfWindow: 300_000 }],
 ];
 const run = (targets: number, c: Partial<SimConfig>, seed = 11, extra = {}) =>
   simulate(makeScenario({ targets, seed, duration: ms(12000), ...extra }), { ...DEFAULT_CONFIG, ...c });
@@ -61,7 +64,10 @@ describe('tendencies', () => {
       }
     }
   });
-  it.each(VARIANTS)('light load, %s: no fixed task is dropped', (_name, c) => {
+  // Not for the two-slope scheduler with a 300 ms window: a re-illumination asked for in the middle of
+  // a window (wanted 30 ms later, 60 ms of slack) cannot wait for the next window. That loss belongs to
+  // the window length, is measured in scripts/tsbf.ts and documented in docs/assumptions.md, section 14.
+  it.each(VARIANTS.filter(([, c]) => c.tsbfWindow === undefined))('light load, %s: no fixed task is dropped', (_name, c) => {
     expect(summarize(run(2, c)).fixed.dropped).toBe(0);
   });
   it.each(VARIANTS.filter(([, c]) => c.scheduler === 'drsi'))('%s: closing up leaves almost no gap', (_name, c) => {
