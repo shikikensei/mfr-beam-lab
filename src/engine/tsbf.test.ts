@@ -96,12 +96,18 @@ describe('two-slope benefit: one window', () => {
     expect(box.items[1].type === 'flex' && box.items[1].region).toBe(0);
   });
 
-  it('pace setting: only regions that have reached their threshold are offered, the rest of the time is spare', () => {
-    const regions = [region('X', 10, 10, 1000, 0)]; // threshold 100 ms
-    const box = planTsbf(view(200, [], regions, { tsbfWindow: 100_000, fill: 'pace' }, [{ pst: 0, done: 0, idx: 0, last: 150_000 }]));
-    // due at 250 ms (100 ms after the last look began); the next one is due at 350 ms, outside the window
-    expect(box.items.map((x) => [x.type, x.start / 1000, x.len / 1000])).toEqual([['spare', 200, 50], ['flex', 250, 10], ['spare', 260, 40]]);
+  it('pace setting: a region is served only while it is behind its desired pace; the order stays the summary\'s', () => {
+    const regions = [region('X', 10, 10, 1000, 0)]; // pattern 100 ms per 1000 ms: one 10 ms look per 100 ms
+    // at 200 ms, 1 look done in this frame: wanted by now 20 ms, done 10 ms -> behind, serve one; then at pace until 290 ms
+    const box = planTsbf(view(200, [], regions, { tsbfWindow: 100_000, fill: 'pace' }, [{ pst: 0, done: 10_000, idx: 1, last: 150_000 }]));
+    expect(box.items.map((x) => [x.type, x.start / 1000, x.len / 1000])).toEqual([['flex', 200, 10], ['spare', 210, 80], ['flex', 290, 10]]);
     expect(tiles(box)).toBe(true);
+  });
+
+  it('pace setting: time is never left as spare while a region is behind and its beam fits', () => {
+    const regions = [region('X', 10, 10, 200, 0)]; // wants half of the time
+    const box = planTsbf(view(1000, [], regions, { tsbfWindow: 100_000, fill: 'pace' }, [{ pst: 0, done: 0, idx: 0, last: 0 }])); // far behind
+    expect(box.items.every((x) => x.type === 'flex')).toBe(true);
   });
 
   it('never lets a look cross the window edge: it waits for the next window or is dropped as a boundary loss', () => {

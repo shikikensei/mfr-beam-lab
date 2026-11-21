@@ -173,3 +173,8 @@ details .check{margin-top:10px}
 .from span{flex:1 1 100%}
 .from button{padding:6px 10px;font-size:13px}
 details[hidden]{display:none}
+.result.small{font-size:14px}
+details.fine{gap:10px}
+details.fine[open] summary{margin-bottom:2px}
+details.fine p+p{margin-top:10px}
+#toSlow{white-space:normal;text-align:left}

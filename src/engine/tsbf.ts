@@ -4,6 +4,7 @@
 // times that maximise the total benefit, (2) the openings left are filled with search looks.
 // The report solves (1) with the simplex method; here the same optimum is found by dynamic
 // programming. What this tool added or changed is listed in docs/assumptions.md, section 14.
+import { flexibleTaskDeficit } from './ftd.ts';
 import type { Box, DropReason, FixedRequest, GapCause, PlanView, Placement, Planner, Us } from './types.ts';
 
 /** One track look: earliest/latest start, desired start, length, peak benefit and the two slopes. */
@@ -101,10 +102,16 @@ export const planTsbf: Planner = (v: PlanView): Box => {
   // Search fills the openings. Each region has one pending look; e = time since its last look.
   // Regions whose e has reached their threshold w come first (smaller w first, then larger e),
   // the others follow by larger e. The first one in that order that fits is placed.
-  // The tool's common setting decides how far to go: "full" fills as the summary says; "pace"
-  // offers only the regions that have reached their threshold, so search stops at its desired pace.
+  // Two separate roles. WHICH region goes first is the summary's rule above. WHETHER a region may
+  // be served is the tool's common setting: "full" serves anything that fits (as the summary says);
+  // "pace" serves only regions that are behind their desired pace, measured with the same yardstick
+  // as every other scheduler (the flexible task deficit at the end of the beam). The pace test is
+  // this tool's mapping, not the report's.
   const w = v.regions.map((g) => g.dft / g.beams), last = v.patterns.map((p) => p.last);
+  const pat = v.patterns.map((p) => ({ ...p })), pl = v.regions.map((g) => g.beams * g.beamLen);
   const pace = v.cfg.fill === 'pace';
+  const behind = (k: number, at: Us): boolean => flexibleTaskDeficit(pl[k], v.regions[k].dft, at + v.regions[k].beamLen - pat[k].pst, pat[k].done + v.regions[k].beamLen) >= 0;
+  const dueAt = (k: number): Us => pat[k].pst + Math.ceil(((pat[k].done + v.regions[k].beamLen) * v.regions[k].dft) / pl[k]) - v.regions[k].beamLen;
   let c = t;
   const fill = (to: Us): void => {
     let wanted = !pace;
@@ -115,18 +122,21 @@ export const planTsbf: Planner = (v: PlanView): Box => {
         if (oa !== ob) return oa ? -1 : 1;
         return (oa ? w[a] - w[b] : 0) || e[b] - e[a] || a - b;
       });
-      const due = pace ? order.filter((k) => e[k] >= w[k]) : order;
+      const due = pace ? order.filter((k) => behind(k, c)) : order;
       const i = due.find((k) => c + v.regions[k].beamLen <= to);
       if (i === undefined) {
-        if (due.length) { wanted = true; break; } // something is due but too long for what is left
-        // nothing is due yet: idle until the first region reaches its threshold, then look again
-        const next = Math.min(to, ...v.regions.map((_, k) => Math.ceil(last[k] + w[k])));
+        if (due.length) { wanted = true; break; } // something is wanted but too long for what is left
+        // every region is at its pace: idle until the first one falls behind, then look again
+        const next = Math.min(to, ...v.regions.map((_, k) => dueAt(k)));
         if (next <= c) break;
         items.push({ type: 'spare', start: c, len: next - c }); c = next;
         continue;
       }
-      items.push({ type: 'flex', region: i, start: c, len: v.regions[i].beamLen });
-      last[i] = c; c += v.regions[i].beamLen;
+      const g = v.regions[i];
+      items.push({ type: 'flex', region: i, start: c, len: g.beamLen });
+      last[i] = c; c += g.beamLen;
+      pat[i].done += g.beamLen;
+      if (++pat[i].idx === g.beams) { pat[i].pst = c; pat[i].done = 0; pat[i].idx = 0; }
     }
     if (c < to) {
       const cause: GapCause = to === end ? 'boundary' : 'fragment';

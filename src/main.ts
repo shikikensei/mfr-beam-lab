@@ -283,6 +283,8 @@ function showPart(p: number, scroll = false): void {
   $('parts').querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(Number(b.dataset.part) === p)));
   $('stage').hidden = p < 3;
   $('partNext').textContent = p < 5 ? `次へ：${PART_NAMES[p + 1]} ▶` : '次の章へ ▶';
+  // part 5 starts from the dynamic RSI again, not from the legacy view left over from part 4
+  if (p === 5 && st.method === 'legacy' && st.sim && !st.hand) { const at = current().box.start; st.method = 'plus'; rebuild(at); }
   if (p === 4 && st.method !== 'legacy' && st.sim) { const at = current().box.start; st.method = 'legacy'; rebuild(at); }
   if (scroll) $('parts').scrollIntoView({ block: 'start' });
   const tab = $('parts').querySelector<HTMLElement>(`[data-part="${p}"]`);
