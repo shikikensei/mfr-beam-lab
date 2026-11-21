@@ -39,6 +39,8 @@ export interface ScenarioOptions {
   disappear?: { at: Us; keep: number };
   /** Share of highly manoeuvring targets (short update interval). Default 0.35. */
   highFrac?: number;
+  /** Share of far targets (dwells with a wait between transmit and receive). Default 0.4. */
+  farFrac?: number;
   criticals?: CriticalSpec[];
   regions?: SearchRegion[];
   params?: Partial<ModelParams>;
@@ -55,6 +57,8 @@ export function makeScenario(o: ScenarioOptions): Scenario {
     const dwell = ms(8 + 2 * Math.floor(r() * 5));
     targets.push({
       region, beam, high, dwell,
+      // by index, not by a random draw, so that adding the attribute changed nothing else
+      far: (i * 7 + 3) % 10 < (o.farFrac ?? 0.4) * 10,
       appear: o.ramp ? Math.round((i / o.targets) * o.ramp) : 0,
       disappear: o.disappear && i >= o.disappear.keep ? o.disappear.at : null,
     });

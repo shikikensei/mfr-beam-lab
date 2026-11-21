@@ -64,6 +64,8 @@ export interface TargetSpec {
   disappear: Us | null;
   high: boolean;
   dwell: Us;
+  /** Far target: its track dwells are transmit, a long wait, receive (didactic scale, not a real range). */
+  far?: boolean;
 }
 
 export interface CriticalSpec { at: Us; len: Us; notice: Us }
@@ -92,7 +94,7 @@ export interface Scenario {
 }
 
 export type FillMode = 'pace' | 'full';
-export type SchedulerId = 'drsi' | 'legacy' | 'fifo' | 'template' | 'priority' | 'edf' | 'balance' | 'tsbf';
+export type SchedulerId = 'drsi' | 'legacy' | 'fifo' | 'template' | 'priority' | 'edf' | 'balance' | 'tsbf' | 'interleave';
 
 export interface SimConfig {
   scheduler: SchedulerId;
@@ -129,8 +131,9 @@ export type GapCause = 'fragment' | 'boundary' | 'window';
 export type DropReason = 'timeout' | 'conflict' | 'boundary';
 
 export type Placement =
-  | { type: 'flex'; region: number; start: Us; len: Us }
-  | { type: 'fixed'; req: FixedRequest; start: Us; len: Us }
+  /** `saved`: set on a dwell interleaved into the wait of the dwell before it; the time the two share. */
+  | { type: 'flex'; region: number; start: Us; len: Us; saved?: Us }
+  | { type: 'fixed'; req: FixedRequest; start: Us; len: Us; saved?: Us }
   /** gap: something was wanted but did not fit. spare: nothing was wanted. */
   | { type: 'gap'; start: Us; len: Us; cause: GapCause }
   | { type: 'spare'; start: Us; len: Us };
@@ -151,6 +154,10 @@ export type PlanStep = { shown: number } & (
   | { kind: 'tsbfSelect'; kept: number[]; out: { id: number; fate: 'carry' | DropReason }[] }
   | { kind: 'tsbfAssign'; starts: { id: number; start: Us }[] }
   | { kind: 'tsbfFill'; placed: number[]; gap: Us; spare: Us }
+  /** Fixed priority + pulse interleaving: pick the next dwell, test whether another fits into its wait, place. */
+  | { kind: 'ilPick'; id: number | null; region: number | null }
+  | { kind: 'ilCheck'; wait: Us; guestId: number | null; guestRegion: number | null; mode: 'whole' | 'tx' | 'none'; saved: Us }
+  | { kind: 'ilPlace'; end: Us }
   /** One-dwell-at-a-time schedulers: the single decision of this call. */
   | { kind: 'pick' }
 );
@@ -177,7 +184,7 @@ export interface PlanView {
 export type Planner = (view: PlanView) => Box;
 
 /** `gs` is the global step index at which the item becomes visible in a step-by-step view. */
-export type Interval = { start: Us; len: Us; box: number; gs: number } & (
+export type Interval = { start: Us; len: Us; box: number; gs: number; saved?: Us } & (
   | { type: 'flex'; region: number }
   | { type: 'fixed'; reqId: number; kind: FixedKind; target: number; hit: boolean }
   | { type: 'gap'; cause: GapCause }

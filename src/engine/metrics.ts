@@ -4,6 +4,10 @@ export interface Summary {
   total: Us;
   /** Share of time by use. They add up to 1. */
   share: { search: number; fixed: number; gap: number; spare: number };
+  /** Time used by two dwells at once (pulse interleaving), as a share of the timeline. The four shares add up to 1 + overlap. */
+  overlap: number;
+  /** Share of the timeline spent transmitting: the transmit segment of a dwell with a wait, half of any other dwell. */
+  txShare: number;
   /** Paper's scheduler efficiency: (total time - gaps) / total time. */
   efficiency: number;
   gapByCause: Record<GapCause, Us>;
@@ -19,12 +23,13 @@ export interface Summary {
 
 export function summarize(r: SimResult): Summary {
   const total = r.end;
-  let search = 0, fixed = 0, gap = 0, spare = 0;
+  let search = 0, fixed = 0, gap = 0, spare = 0, overlap = 0, tx = 0;
   const gapByCause: Record<GapCause, Us> = { fragment: 0, boundary: 0, window: 0 };
   const perRegion = r.scenario.regions.map(() => 0);
   for (const x of r.timeline) {
-    if (x.type === 'flex') { search += x.len; perRegion[x.region] += x.len; }
-    else if (x.type === 'fixed') fixed += x.len;
+    overlap += x.saved ?? 0;
+    if (x.type === 'flex') { search += x.len; perRegion[x.region] += x.len; tx += x.len - Math.floor(x.len / 2); }
+    else if (x.type === 'fixed') { fixed += x.len; tx += r.requests[x.reqId].seg.tx; }
     else if (x.type === 'gap') { gap += x.len; gapByCause[x.cause] += x.len; }
     else spare += x.len;
   }
@@ -50,6 +55,7 @@ export function summarize(r: SimResult): Summary {
   return {
     total,
     share: { search: search / total, fixed: fixed / total, gap: gap / total, spare: spare / total },
+    overlap: overlap / total, txShare: tx / total,
     efficiency: (total - gap) / total,
     gapByCause,
     regions: r.scenario.regions.map((g, i) => {
@@ -68,14 +74,26 @@ export function summarize(r: SimResult): Summary {
 export function validate(r: SimResult): string[] {
   const bad: string[] = [];
   const tl = [...r.timeline].sort((a, b) => a.start - b.start);
+  // Every moment is covered, and only an interleaved dwell (`saved`) may share time with another.
   let t = 0;
   for (const x of tl) {
     if (x.len <= 0) bad.push(`empty interval at ${x.start}`);
-    if (x.start < t) bad.push(`overlap at ${x.start}`);
+    if (x.start < t && !x.saved) bad.push(`overlap at ${x.start}`);
     if (x.start > t) bad.push(`unaccounted time ${t}..${x.start}`);
-    t = x.start + x.len;
+    if (x.saved && x.saved !== Math.min(t, x.start + x.len) - x.start) bad.push(`interleaved dwell at ${x.start} claims ${x.saved} shared, has ${Math.min(t, x.start + x.len) - x.start}`);
+    t = Math.max(t, x.start + x.len);
   }
   if (t !== r.end) bad.push(`timeline ends at ${t}, run at ${r.end}`);
+  // The beam itself is never used twice: transmit and receive segments do not overlap anything.
+  const busy: [Us, Us][] = [];
+  for (const x of tl) {
+    if (x.type === 'gap' || x.type === 'spare') continue;
+    const g = x.type === 'fixed' ? r.requests[x.reqId].seg : null;
+    if (g && g.wait > 0) busy.push([x.start, x.start + g.tx], [x.start + x.len - g.rx, x.start + x.len]);
+    else busy.push([x.start, x.start + x.len]);
+  }
+  busy.sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < busy.length; i++) if (busy[i][0] < busy[i - 1][1]) bad.push(`transmit/receive overlap at ${busy[i][0]}`);
   const seen = new Set<number>();
   for (const x of tl) {
     if (x.type !== 'fixed') continue;

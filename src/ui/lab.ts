@@ -16,7 +16,7 @@ import { drawStrip } from './timeline.ts';
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const SEED = 11, SEEDS = [11, 12, 13, 14], DURATION = ms(60000);
 /** The schedulers the search-lateness convention applies to. */
-const SIMPLE = Object.assign(new Set<string>(['fifo', 'template', 'priority', 'edf', 'balance']), { conv: true });
+const SIMPLE = Object.assign(new Set<string>(['fifo', 'template', 'priority', 'interleave', 'edf', 'balance']), { conv: true });
 const pc = (x: number, d = 0): string => (x * 100).toFixed(d) + ' %';
 
 interface Preset { id: string; label: string; note: string; opt: Omit<ScenarioOptions, 'seed' | 'duration'> }
@@ -24,6 +24,7 @@ const PRESETS: Preset[] = [
   { id: 'light', label: '軽い', note: '目標8。20秒かけて現れます。入れたい量は最後まで上限の内側です。', opt: { targets: 8, ramp: ms(20000) } },
   { id: 'sat', label: '飽和する', note: '目標30。40秒かけて現れ、途中で入れたい量が上限を超えます。', opt: { targets: 30, ramp: ms(40000) } },
   { id: 'high', label: '高機動が多い', note: '目標22、その8割が高機動（更新間隔 0.3 s）。数は少なくても、追尾の仕事が速く増えます。', opt: { targets: 22, ramp: ms(40000), highFrac: 0.8 } },
+  { id: 'far', label: '遠距離が多い', note: '目標30、その8割が遠距離。遠距離の目標の照射には、送信と受信のあいだに待ちがあります。「固定優先度＋インターリーブ」だけがこの待ちを使います。待ち 4〜12 ms は説明用の縮尺です。電波の往復時間に直すと 600〜1800 km に当たり、現実の距離ではありません（ドウェルを長めに置いているのと同じ縮尺の話です）。', opt: { targets: 30, ramp: ms(40000), farFrac: 0.8 } },
   { id: 'recover', label: '減って回復する', note: '目標36が20秒で現れ、40秒の時点で8つを残して消えます。あふれたあと、どう立ち直るかを見ます。', opt: { targets: 36, ramp: ms(20000), disappear: { at: ms(40000), keep: 8 } } },
 ];
 
@@ -114,7 +115,7 @@ function drawLoad(): void {
   player('play2', 'sel2');
   drawStrip($<HTMLCanvasElement>('strip2'), r.sim, k * 1e6, 1e6);
   $('toSlow').textContent = `${k}〜${k + 1} 秒を1手ずつ見る（1章）▶`;
-  $('toSlowNote').textContent = ['plus', 'paper', 'legacy', 'tsbf'].includes(state.method) ? '' : `スローモーションで1手ずつ見られるのは、動的RSIの2つ、従来型、2勾配ベネフィットです。「${labOf(state.method).label}」を選んでいるので、同じ状況を「動的RSI＋先読み」で開きます。`;
+  $('toSlowNote').textContent = ['plus', 'paper', 'legacy', 'tsbf', 'interleave'].includes(state.method) ? '' : `スローモーションで1手ずつ見られるのは、動的RSIの2つ、従来型、2勾配ベネフィット、固定優先度＋インターリーブです。「${labOf(state.method).label}」を選んでいるので、同じ状況を「動的RSI＋先読み」で開きます。`;
   $('read2').innerHTML = `${k}〜${k + 1} 秒：入れたい量 <b>${pc(demand[k])}</b> → ${reading(r, k)}`;
   const s = r.sum, row = (a: string, b: string): string => `<dt>${a}</dt><dd>${b}</dd>`;
   $('kpi2').innerHTML =
@@ -133,10 +134,10 @@ let sweep: { key: string; a: SweepPoint[]; b: SweepPoint[]; full: number } | nul
 function sweepOf(): NonNullable<typeof sweep> {
   const key = [state.preset, state.a, state.b, state.keep, state.win].join('|');
   if (sweep?.key === key) return sweep;
-  const highFrac = presetOf().opt.highFrac;
+  const { highFrac, farFrac } = presetOf().opt;
   let full = 0;
   const line = (id: LabId): SweepPoint[] => SWEEP_N.map((n) => {
-    const sc = makeScenario({ targets: n, seed: SEED, duration: ms(30000), highFrac });
+    const sc = makeScenario({ targets: n, seed: SEED, duration: ms(30000), highFrac, farFrac });
     const s = summarize(simulate(sc, cfgOf(id)));
     return { n, search: s.share.search / demandSeries(sc).search, drop: s.fixed.requested ? s.fixed.dropped / s.fixed.requested : 0, upper: s.fixed.upperRequested ? s.fixed.upperDropped / s.fixed.upperRequested : 0 };
   });
@@ -148,7 +149,7 @@ function sweepOf(): NonNullable<typeof sweep> {
 }
 
 interface Spread { mean: number; min: number; max: number }
-interface Stats { search: Spread; hi: number; lo: number; gap: number; drop: Spread; upper: Spread; share: Spread }
+interface Stats { search: Spread; hi: number; lo: number; gap: number; drop: Spread; upper: Spread; share: Spread; tx: number; overlap: number }
 const spread = (v: number[]): Spread => ({ mean: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v) });
 const statCache = new Map<string, Stats>();
 /**
@@ -159,7 +160,7 @@ const statCache = new Map<string, Stats>();
 const statKey = (id: LabId, keep: boolean): string => [state.preset, id, SIMPLE.has(id) ? keep : '-', id === 'tsbf' ? state.win : 0].join('|');
 const toStats = (all: Summary[], want: number): Stats => {
   const avg = (f: (s: Summary) => number): number => spread(all.map(f)).mean;
-  return { search: spread(all.map((s) => (s.share.search / want) * 100)), hi: avg((s) => s.regions[0].served * 100), lo: avg((s) => s.regions[s.regions.length - 1].served * 100),
+  return { tx: avg((s) => s.txShare * 100), overlap: avg((s) => s.overlap * 100), search: spread(all.map((s) => (s.share.search / want) * 100)), hi: avg((s) => s.regions[0].served * 100), lo: avg((s) => s.regions[s.regions.length - 1].served * 100),
     gap: avg((s) => s.share.gap * 100), drop: spread(all.map((s) => s.fixed.dropped)), upper: spread(all.map((s) => s.fixed.upperDropped)),
     share: spread(all.map((s) => (s.fixed.requested ? (s.fixed.dropped / s.fixed.requested) * 100 : 0))) };
 };
@@ -185,7 +186,7 @@ function stats(id: LabId, keep = state.keep): Stats {
   return toStats([run(id, keep).sum], want);
 }
 const short = (label: string): string => label.replace(/（(.+)）$/, '<small>$1</small>');
-const dotName = (label: string): string => label.replace(/（.+）$/, '').replace('動的RSI＋先読み', '＋先読み').replace('固定テンプレート', 'テンプレート').replace('最早期限優先', '最早期限').replace('2勾配ベネフィット', '2勾配');
+const dotName = (label: string): string => label.replace(/（.+）$/, '').replace('動的RSI＋先読み', '＋先読み').replace('固定テンプレート', 'テンプレート').replace('最早期限優先', '最早期限').replace('2勾配ベネフィット', '2勾配').replace('固定優先度＋インターリーブ', 'インターリーブ');
 /** The scatter chart, its reading and the table. Redrawn on its own when the background seeds arrive. */
 function drawScore(): void {
   const all = LAB.map((m) => ({ m, now: stats(m.id), other: SIMPLE.has(m.id) ? stats(m.id, !state.keep) : null }));
@@ -204,6 +205,8 @@ function drawScore(): void {
     points: all.map(({ m, now, other }) => ({ name: dotName(m.label), x: now.search.mean, y: now.share.mean, xr: [now.search.min, now.search.max], yr: [now.share.min, now.share.max],
       fromX: (other ?? now).search.mean, fromY: (other ?? now).share.mean })),
   });
+  const pr = stats('priority'), il = stats('interleave');
+  $('duty').innerHTML = `送信している時間の割合（送信デューティ比）：固定優先度 <b>${pr.tx.toFixed(1)} %</b>、固定優先度＋インターリーブ <b>${il.tx.toFixed(1)} %</b>。インターリーブで2つの照射が重なっていた時間は、全体の <b>${il.overlap.toFixed(1)} %</b> です。`;
   // what the chart says, for the situation at hand
   const over = Math.max(...situation().demand) > 1, big = groups.filter((g) => g.length > 1);
   const same = big.length ? `幅が互いに重なって区別できないのは、${big.map((g) => `「${g.join('・')}」`).join('と')}です。` : 'どの並べ方も、ほかとは幅が重なっていません。';

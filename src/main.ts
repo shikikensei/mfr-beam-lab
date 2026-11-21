@@ -132,6 +132,16 @@ function drawWindowHills(box: BoxRecord, k: number): void {
     out: k >= 1 && sel.kind === 'tsbfSelect' ? new Map(sel.out.map((x) => [x.id, FATE[x.fate]])) : null,
     starts: k >= 2 && asg.kind === 'tsbfAssign' ? new Map(asg.starts.map((x) => [x.id, x.start])) : null });
 }
+/** Interleaving view: the current dwell and its guest, enlarged. */
+function drawZoom(box: BoxRecord): void {
+  const sim = st.sim!, pick = box.steps[0], chk = box.steps[1];
+  const on = pick.kind === 'ilPick' && pick.id !== null && chk.kind === 'ilCheck' && chk.wait > 0;
+  $('zoomWrap').hidden = !on;
+  if (!on || pick.kind !== 'ilPick' || chk.kind !== 'ilCheck') return;
+  const host = sim.requests[pick.id!], lanes = [host.target, ...(chk.guestId !== null ? [sim.requests[chk.guestId].target] : [])].filter((x, i, a) => x >= 0 && a.indexOf(x) === i);
+  drawTimeline($<HTMLCanvasElement>('zoomCv'), { sim, x0: box.start - ms(4), span: Math.max(ms(40), box.end - box.start + ms(12)), targets: lanes,
+    seen: { gs: st.g }, cursor: box.start, regions: chk.guestRegion !== null, box: null, boxRow: true });
+}
 function drawStage(): void {
   const sim = st.sim;
   if (!sim) return;
@@ -142,7 +152,8 @@ function drawStage(): void {
   drawTimeline($<HTMLCanvasElement>('cv'), { sim, x0: st.hand ? -HAND_BACK : box.start - BACK, span: st.hand ? HAND_SPAN : SPAN, targets: sim.scenario.targets.map((_, i) => i),
     seen: { gs: st.g }, cursor, regions: true, box: { rec: box, k }, boxRow: true });
   drawWindowHills(box, k);
-  const phases = PHASES[sim.config.scheduler === 'legacy' ? 'legacy' : sim.config.scheduler === 'tsbf' ? 'tsbf' : 'drsi'], on = phaseOf(step), cap = describe(sim, step, box);
+  drawZoom(box);
+  const sch = sim.config.scheduler, phases = PHASES[sch === 'legacy' || sch === 'tsbf' || sch === 'interleave' ? sch : 'drsi'], on = phaseOf(step), cap = describe(sim, step, box);
   const row = (label: string, lines: string[]): string => (lines.length ? `<dt>${label}</dt><dd>${lines.join('<br>')}</dd>` : '');
   $('caption').innerHTML = `<ol class="phases">${phases.map((p, i) => `<li${i === on ? ' aria-current="step"' : ''}>${'①②③④'[i]} ${p}</li>`).join('')}</ol>` +
     `<dl class="cap">${row('何をした', cap.did)}${row('なぜ', cap.why)}${row('結果', cap.result)}</dl>`;
@@ -175,10 +186,12 @@ function rebuild(at: Us | null = null, pick: ((sim: SimResult) => BoxRecord | un
   $<HTMLElement>('stage').querySelector('details')!.hidden = !!st.ext;
   $<HTMLInputElement>('step').max = String(sim.steps - 1);
   $('methods').querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.method === st.method)));
-  $('lgTentative').hidden = st.method === 'legacy' || st.method === 'tsbf'; // only the dynamic RSI places tentatively
+  $('lgTentative').hidden = st.method !== 'plus' && st.method !== 'paper'; // only the dynamic RSI places tentatively
   $('lgHill').hidden = st.method !== 'tsbf';
+  $('lgWait').hidden = st.method !== 'interleave';
+  if (st.method !== 'interleave') $('zoomWrap').hidden = true;
   if (st.method !== 'tsbf') $('hillWrap').hidden = true;
-  const typical = (b: BoxRecord): boolean => b.start >= ms(1200) && (sim.config.scheduler === 'legacy' || (b.steps[0].kind === 'tsbfCollect' && b.steps[0].cands.length >= 2) || (b.steps[0].kind === 'select' && b.steps[0].nft !== null));
+  const typical = (b: BoxRecord): boolean => b.start >= ms(1200) && (sim.config.scheduler === 'legacy' || (b.steps[0].kind === 'tsbfCollect' && b.steps[0].cands.length >= 2) || (b.steps[1]?.kind === 'ilCheck' && b.steps[1].mode !== 'none') || (b.steps[0].kind === 'select' && b.steps[0].nft !== null));
   const box = pick?.(sim) ?? (at !== null ? [...sim.boxes].reverse().find((b) => b.start <= at) : sim.boxes.find(typical));
   go(box ? box.gsBase : 0);
   compare();
@@ -198,7 +211,7 @@ $('n').addEventListener('input', () => { leaveHand(); rebuild(); });
 $('toSlow').addEventListener('click', () => {
   const v = labView();
   leaveHand(); st.ext = v;
-  st.method = v.method === 'paper' || v.method === 'legacy' || v.method === 'tsbf' ? v.method : 'plus';
+  st.method = v.method in METHODS ? v.method as MethodId : 'plus';
   showChapter(1, false); showPart(3);
   rebuild(v.at, (sim) => sim.boxes.find((b) => b.end > v.at));
   $('stage').scrollIntoView({ block: 'start' });
@@ -226,6 +239,10 @@ const SCENES: Scene[] = [
     method: 'paper', n: 10, crit: false, find: (_s, b) => late(b) && b.steps.filter((x) => x.kind === 'chain').length >= 2 },
   { label: '割り込み', note: '緊急タスクの通知で、組んだ箱を途中で打ち切る場面です。始まっていないものはキューへ戻します。',
     method: 'paper', n: 8, crit: true, find: (_s, b) => b.interrupted },
+  { label: '差し込み（丸ごと）', note: '遠距離の目標の照射の待ちに、次の照射が丸ごと入る場面です。上の拡大図で、枠（待ち）の中に別の照射が収まっているのを確かめられます。待ち 4〜12 ms は説明用の縮尺で、現実の距離には当たりません。',
+    method: 'interleave', n: 16, crit: false, find: (_s, b) => late(b) && b.steps[1]?.kind === 'ilCheck' && b.steps[1].mode === 'whole' && b.steps[1].guestId !== null },
+  { label: '差し込み（送信だけ）', note: '次の照射が待ちに丸ごとは入らないので、送信だけを待ちに入れ、受信をいまの照射の受信の後に置く場面です。待ち 4〜12 ms は説明用の縮尺で、現実の距離には当たりません。',
+    method: 'interleave', n: 16, crit: false, find: (_s, b) => late(b) && b.steps[1]?.kind === 'ilCheck' && b.steps[1].mode === 'tx' },
   { label: '先読みの違い', note: '本ツールの拡張が、後ろで待つ固定タスクのために仮置きを手前へずらす場面です。「論文の記述どおり」に切り替えると、同じ時刻でずらさない動きを見られます。',
     method: 'plus', n: 10, crit: false, find: (s, b) => { const x = selectOf(b); return late(b) && !!x && x.nft !== null && x.caseNo === 1 && x.tentative! < s.requests[x.nft].latest; } },
 ];

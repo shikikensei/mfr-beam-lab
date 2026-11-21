@@ -14,6 +14,8 @@ const VARIANTS: [string, Partial<SimConfig>][] = [
   ['legacy, full', { scheduler: 'legacy', fill: 'full' }],
   ...(['fifo', 'template', 'priority', 'edf', 'balance'] as const).flatMap((scheduler): [string, Partial<SimConfig>][] =>
     [[`${scheduler}, pace`, { scheduler, fill: 'pace' }], [`${scheduler}, full`, { scheduler, fill: 'full' }]]),
+  ['fixed priority + interleaving, pace', { scheduler: 'interleave', fill: 'pace' }],
+  ['fixed priority + interleaving, full', { scheduler: 'interleave', fill: 'full' }],
   ['two-slope benefit, 100 ms window, pace', { scheduler: 'tsbf', fill: 'pace' }],
   ['two-slope benefit, 100 ms window, full', { scheduler: 'tsbf', fill: 'full' }],
   ['two-slope benefit, 300 ms window', { scheduler: 'tsbf', fill: 'full', tsbfWindow: 300_000 }],
@@ -31,7 +33,7 @@ describe.each(VARIANTS)('invariants: %s', (_name, c) => {
   });
   it('accounts for all time: shares add up to 1 and efficiency = (total - gaps) / total', () => {
     const r = run(14, c), s = summarize(r);
-    expect(s.share.search + s.share.fixed + s.share.gap + s.share.spare).toBeCloseTo(1, 12);
+    expect(s.share.search + s.share.fixed + s.share.gap + s.share.spare - s.overlap).toBeCloseTo(1, 12);
     const gaps = r.timeline.filter((x) => x.type === 'gap').reduce((a, x) => a + x.len, 0);
     expect(s.efficiency).toBe((r.end - gaps) / r.end);
   });

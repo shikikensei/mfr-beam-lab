@@ -11,6 +11,7 @@ export const METHODS = {
   paper: { label: '動的RSI', note: '論文の記述どおり', scheduler: 'drsi', protect: 'paper' },
   legacy: { label: '従来型', note: '固定長の箱', scheduler: 'legacy', protect: 'paper' },
   tsbf: { label: '2勾配ベネフィット', note: '原文未確認の要約', scheduler: 'tsbf', protect: 'paper' },
+  interleave: { label: '固定優先度＋インターリーブ', note: 'Han (2024) を単純化', scheduler: 'interleave', protect: 'paper' },
 } as const;
 export type MethodId = keyof typeof METHODS;
 
@@ -19,6 +20,7 @@ export const LAB = [
   { id: 'fifo', label: '到着順', cfg: { scheduler: 'fifo' }, how: '用意ができた順に実行します。優先度も期限も見ません。捜索と固定タスクを同じ列に並べます。' },
   { id: 'template', label: '固定テンプレート', cfg: { scheduler: 'template' }, how: '100 ms の周期を、固定タスク用 40 % と捜索用 60 % にあらかじめ割ります。自分の枠が余っても、相手には貸しません。' },
   { id: 'priority', label: '固定優先度', cfg: { scheduler: 'priority' }, how: '優先度の高いものから実行します。固定タスクが常に先で、捜索は残った時間に入ります。捜索の中では水平線が先です。' },
+  { id: 'interleave', label: '固定優先度＋インターリーブ', cfg: { scheduler: 'interleave' }, how: '固定優先度と同じ順で選びます。違いは、遠距離の目標の照射にある「待ち」（送信してから反射が戻るまで）を使うことです。直前の照射の待ちに、次の照射を丸ごと、または送信だけ差し込みます。Han (2024) の考え方を単純化したもので、送信機の発熱などの制約は省いています。' },
   { id: 'edf', label: '最早期限優先', cfg: { scheduler: 'edf' }, how: '終わらせるべき時刻がいちばん近いものから実行します。優先度は見ません。捜索ビームの期限をどう置くかで結果が変わります。' },
   { id: 'balance', label: 'タイムバランス', cfg: { scheduler: 'balance' }, how: '「遅れ ÷ 周期」がいちばん大きいものから実行します。遅れを全員で分け合う考え方です。' },
   { id: 'tsbf', label: '2勾配ベネフィット（原文未確認の要約に基づく実装）', cfg: { scheduler: 'tsbf' }, how: '決まった長さの窓ごとに、まず追尾を並べます。希望時刻で最大、前後にずれるほど下がる山形の「ベネフィット」の合計が最大になるように開始時刻を決め、入りきらなければピークの低いものから落とします。次に、残った空きを捜索で埋めます。捜索は、前回からの経過時間が長い領域から選びます。所望のペースより遅れても、あとで取り戻すことはしません。Moo (2010) の報告書の二次要約から実装したもので、原文は未確認です。' },
@@ -33,13 +35,14 @@ export const PHASES = {
   drsi: ['次の固定タスクを選ぶ', '捜索の不足量を計算', '箱を捜索で詰める', '固定タスクを寄せて実行'],
   legacy: ['固定長の箱を用意', '固定タスクを優先度順に置く', '残りを捜索で埋める'],
   tsbf: ['窓の要求を集める', '選別する', '開始時刻を一括で決める', '隙間を捜索で埋める'],
+  interleave: ['次の照射を選ぶ', '待ちに入る照射を探す', '置く'],
 };
 /** Which phase chip a step lights up (-1: none). */
 export function phaseOf(step: PlanStep): number {
   switch (step.kind) {
-    case 'select': case 'legacyBox': case 'tsbfCollect': return 0;
-    case 'deficit': case 'legacyFixed': case 'tsbfSelect': return 1;
-    case 'fill': case 'legacyFill': case 'tsbfAssign': return 2;
+    case 'select': case 'legacyBox': case 'tsbfCollect': case 'ilPick': return 0;
+    case 'deficit': case 'legacyFixed': case 'tsbfSelect': case 'ilCheck': return 1;
+    case 'fill': case 'legacyFill': case 'tsbfAssign': case 'ilPlace': return 2;
     case 'close': case 'chain': case 'tsbfFill': return 3;
     default: return -1;
   }
@@ -183,6 +186,31 @@ export function describe(sim: SimResult, step: PlanStep, box: BoxRecord): Captio
       if (step.gap) result.push(`${msTxt(step.gap)} は捜索が入らず、隙間になった。固定タスクは動かさないので、あいだに細切れが残る。`);
       if (step.spare) result.push(`${msTxt(step.spare)} は頼むものがなく、余裕として空いた。`);
       if (!step.gap && !step.spare) result.push('空きは残らなかった。');
+      break;
+    case 'ilPick':
+      if (step.id !== null) {
+        const q = R[step.id];
+        did.push(`${reqName(sim, q)}を、次の照射に選んだ。`);
+        why.push('用意ができている中で、優先度がいちばん高い（固定優先度と同じ選び方）。');
+        result.push(q.seg.wait > 0 ? `遠距離の目標なので、送信 ${msTxt(q.seg.tx)}・待ち ${msTxt(q.seg.wait)}・受信 ${msTxt(q.seg.rx)} に分かれる。` : `待ちのない照射（長さ ${msTxt(q.len)}）。`);
+      } else {
+        did.push(`${names[step.region!]}の捜索ビームを、次の照射に選んだ。`);
+        why.push('用意ができている固定タスクがない。捜索ビームに待ちはない。');
+      }
+      break;
+    case 'ilCheck': {
+      if (!step.wait) { did.push('差し込みは調べなかった。'); why.push('いまの照射に待ちがない。'); break; }
+      did.push(`待ち ${msTxt(step.wait)} に入る照射を、優先度の高い順に探した。`);
+      why.push('待ちの間、ビームは何もしていない。送信と受信がほかの送信・受信と重ならなければ、別の照射を入れられる。');
+      const g = step.guestId !== null ? reqName(sim, R[step.guestId]) : step.guestRegion !== null ? `${names[step.guestRegion]}の捜索ビーム` : '';
+      if (step.mode === 'whole') result.push(`${g}が丸ごと入る。${msTxt(step.saved)} が浮く。`);
+      else if (step.mode === 'tx') result.push(`${g}は丸ごとは入らないが、送信だけを待ちに入れ、受信をいまの照射の受信の後に置ける。${msTxt(step.saved)} が浮く。`);
+      else result.push('入る照射はなかった（用意ができているものがないか、長すぎる）。');
+      break;
+    }
+    case 'ilPlace':
+      did.push('照射を実行した。');
+      result.push(`${sec(step.end)} まで。`);
       break;
     case 'pick':
       break;

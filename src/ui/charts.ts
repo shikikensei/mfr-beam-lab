@@ -8,7 +8,8 @@ export interface StackData { search: number[]; track: number[]; aux: number[]; g
  */
 export function stackChart(host: HTMLElement, o: { per: StackData; demand: number[]; sel: number; label: string; onPick: (k: number) => void }): void {
   const W = host.clientWidth || 320, H = 190, m = { l: 38, r: 6, t: 8, b: 30 };
-  const ns = o.demand.length, dmax = Math.max(...o.demand, 1), ymax = Math.max(1.25, Math.ceil(dmax * 4 + 0.2) / 4);
+  const ns = o.demand.length, used = o.demand.map((_, k) => o.per.search[k] + o.per.track[k] + o.per.aux[k] + o.per.gap[k]);
+  const dmax = Math.max(...o.demand, ...used, 1), ymax = Math.max(1.25, Math.ceil(dmax * 4 + 0.2) / 4);
   const cw = (W - m.l - m.r) / ns, bw = Math.max(cw - 0.8, 0.8);
   const X = (k: number): number => m.l + k * cw, Y = (v: number): number => H - m.b - (v / ymax) * (H - m.t - m.b);
   let s = `<svg width="${W}" height="${H}" role="img" aria-label="${o.label}">`;
@@ -18,7 +19,7 @@ export function stackChart(host: HTMLElement, o: { per: StackData; demand: numbe
     s += `<rect x="${X(k)}" y="${Y(1)}" width="${bw}" height="${Y(0) - Y(1)}" fill="var(--s-idle)"/>`;
     let y = 0;
     for (const [v, col] of [[o.per.search[k], '--s-search'], [o.per.track[k], '--s-track'], [o.per.aux[k], '--s-aux'], [o.per.gap[k], '--over']] as const) {
-      const v2 = Math.min(v, 1 - y);
+      const v2 = Math.min(v, ymax - y); // above 100 %: two dwells sharing the same time (interleaving)
       if (v2 <= 0.002) continue;
       s += `<rect x="${X(k)}" y="${Y(y + v2)}" width="${bw}" height="${Y(y) - Y(y + v2)}" fill="var(${col})"/>`;
       y += v2;

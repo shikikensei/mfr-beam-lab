@@ -68,15 +68,31 @@ export function drawTimeline(cv: HTMLCanvasElement, v: TimelineView): void {
     if (e.type === 'flex') {
       c.fillStyle = C.s;
       if (v.regions) c.fillRect(xa, yPat + e.region * 16 + 2, w, 12);
-      if (v.boxRow) c.fillRect(xa, yBox + 4 + e.region * 6, w, boxH - 8 - e.region * 6);
+      if (v.boxRow) { if (e.saved) c.fillRect(xa, yBox + 4 + (boxH - 8) / 2 + 1, w, (boxH - 8) / 2 - 1); else c.fillRect(xa, yBox + 4 + e.region * 6, w, boxH - 8 - e.region * 6); }
     } else if (e.type === 'fixed') {
       const col = colour(e.kind), y = e.target < 0 ? null : yOf(e.target);
       if (y !== null) {
-        if (e.hit) { c.fillStyle = col; c.fillRect(xa, y + 5, w, lh - 10); }
+        const g = sim.requests[e.reqId].seg;
+        if (g.wait > 0) {
+          // transmit and receive are solid, the wait between them is an empty frame
+          const xr = X(e.start + e.len - g.rx);
+          c.fillStyle = col; c.fillRect(xa, y + 5, Math.max(X(e.start + g.tx) - xa, 1), lh - 10); c.fillRect(xr, y + 5, Math.max(xa + w - xr, 1), lh - 10);
+          c.strokeStyle = col; c.lineWidth = 1; c.strokeRect(xa + 0.5, y + 5.5, w - 1, lh - 11);
+          if (!e.hit) { c.fillStyle = C.crit; c.font = '700 10px ' + font; c.textAlign = 'center'; c.fillText('✕', xa + w / 2, y + 5); }
+        } else if (e.hit) { c.fillStyle = col; c.fillRect(xa, y + 5, w, lh - 10); }
         else { c.strokeStyle = col; c.lineWidth = 1.5; c.strokeRect(xa + 0.75, y + 5.75, w - 1.5, lh - 11.5);
           c.fillStyle = C.crit; c.font = '700 10px ' + font; c.textAlign = 'center'; c.fillText('✕', xa + w / 2, y + 5); }
       }
-      if (v.boxRow) { c.fillStyle = col; c.fillRect(xa, yBox + 4, w, boxH - 8); }
+      if (v.boxRow) {
+        const g = sim.requests[e.reqId].seg, half = (boxH - 8) / 2;
+        c.fillStyle = col;
+        if (e.saved) c.fillRect(xa, yBox + 4 + half + 1, w, half - 1); // a guest: lower tier
+        else if (g.wait > 0) { // a host: transmit and receive full height, the wait as a frame on the upper tier
+          const xr = X(e.start + e.len - g.rx);
+          c.fillRect(xa, yBox + 4, Math.max(X(e.start + g.tx) - xa, 1), boxH - 8); c.fillRect(xr, yBox + 4, Math.max(xa + w - xr, 1), boxH - 8);
+          c.strokeStyle = col; c.lineWidth = 1; c.strokeRect(xa + 0.5, yBox + 4.5, w - 1, half - 1);
+        } else c.fillRect(xa, yBox + 4, w, boxH - 8);
+      }
     } else if (e.type === 'gap' && v.boxRow) { c.fillStyle = C.over; c.fillRect(xa, yBox + 4, w + 0.6, boxH - 8); }
   }
   for (const m of sim.marks) {
@@ -89,7 +105,7 @@ export function drawTimeline(cv: HTMLCanvasElement, v: TimelineView): void {
     const cur = v.box?.rec ?? null, k = v.box?.k ?? 0;
     const sel = cur?.steps[0];
     const planned = !cur || !sel ? 0 : sel.kind === 'select' && sel.nft !== null ? sel.limit + sim.requests[sel.nft].len : sel.kind === 'select' ? sel.limit : cur.end;
-    const closed = (b: BoxRecord): boolean => b !== cur || b.steps.slice(0, k + 1).some((s) => s.kind === 'close' || s.kind === 'legacyFill' || s.kind === 'tsbfFill' || s.kind === 'interrupt');
+    const closed = (b: BoxRecord): boolean => b !== cur || b.steps.slice(0, k + 1).some((s) => s.kind === 'close' || s.kind === 'legacyFill' || s.kind === 'tsbfFill' || s.kind === 'ilPlace' || s.kind === 'interrupt');
     for (const b of sim.boxes) {
       if (!seenAt(b.gsBase, b.start) || b.end < v.x0) continue;
       const fin = closed(b), end = b !== cur ? b.end : fin ? Math.max(v.cursor, b.start + 1) : planned;
@@ -152,7 +168,8 @@ export function drawHills(cv: HTMLCanvasElement, sim: SimResult, o: { start: Us;
   const n = o.ids.length, yRow = top + n * rh + 6, H = yRow + 22 + 20;
   cv.style.height = H + 'px'; cv.width = W * dpr; cv.height = H * dpr;
   const c = cv.getContext('2d')!; c.scale(dpr, dpr); c.clearRect(0, 0, W, H);
-  const pad = Math.round((o.end - o.start) * 0.18), x0 = o.start - pad, span = o.end - o.start + 2 * pad;
+  // wide enough on the left to show the apex of a look carried over from an earlier window
+  const pad = Math.round((o.end - o.start) * 0.18), x0 = Math.min(o.start - pad, ...o.ids.map((id) => sim.requests[id].req - Math.round(pad / 2))), span = o.end + pad - x0;
   const X = (t: Us): number => L + ((t - x0) / span) * (W - L - Rm);
   const ink = css('--ink'), ink2 = css('--ink2'), mut = css('--muted'), line = css('--line'), font = css('--font'), mono = css('--mono');
   const colour = (kind: string): string => (kind === 'confirm' ? css('--s-aux') : kind === 'critical' ? css('--s-urgent') : css('--s-track'));

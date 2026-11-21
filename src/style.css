@@ -185,3 +185,6 @@ details.fine p+p{margin-top:10px}
 #hillWrap{display:flex;flex-direction:column;gap:8px}
 #hillWrap[hidden]{display:none}
 #hillWrap h3{margin:0}
+#zoomWrap{display:flex;flex-direction:column;gap:8px}
+#zoomWrap[hidden]{display:none}
+#zoomWrap h3{margin:0}

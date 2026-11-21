@@ -3,7 +3,7 @@
 import { planDrsi } from './drsi.ts';
 import { planLegacy } from './legacy.ts';
 import { planTsbf } from './tsbf.ts';
-import { planBalance, planEdf, planFifo, planPriority, planTemplate } from './simple.ts';
+import { planBalance, planEdf, planFifo, planInterleave, planPriority, planTemplate } from './simple.ts';
 import { draw } from './rand.ts';
 import { QUEUES, rankOf } from './types.ts';
 import type {
@@ -11,7 +11,10 @@ import type {
   RequestRecord, Scenario, SchedulerId, SimConfig, SimResult, Us,
 } from './types.ts';
 
-export const PLANNERS: Record<SchedulerId, Planner> = { drsi: planDrsi, legacy: planLegacy, fifo: planFifo, template: planTemplate, priority: planPriority, edf: planEdf, balance: planBalance, tsbf: planTsbf };
+export const PLANNERS: Record<SchedulerId, Planner> = { drsi: planDrsi, legacy: planLegacy, fifo: planFifo, template: planTemplate, priority: planPriority, edf: planEdf, balance: planBalance, tsbf: planTsbf, interleave: planInterleave };
+
+/** Transmit and receive lengths of a far target's dwell (didactic scale). */
+export const TX = 2000, RX = 2000;
 
 type TState = 'undetected' | 'confirming' | 'tracked' | 'gone';
 
@@ -26,9 +29,11 @@ export function simulate(sc: Scenario, cfg: SimConfig): SimResult {
 
   function addRequest(kind: FixedKind, target: number, req: Us, lead: Us, trail: Us, len: Us, at: Us, period: Us, scripted = false): void {
     const half = Math.floor(len / 2);
+    // A far target's track dwell: transmit, wait for the echo, receive. Everything else has no wait.
+    const far = target >= 0 && !!targets[target].spec.far && (kind === 'track' || kind === 'trackHigh' || kind === 'retry') && !scripted && len >= TX + RX + 2000;
     const r: RequestRecord = {
       id: requests.length, kind, target, req, earliest: req - lead, latest: req + trail, len,
-      seg: { tx: len - half, wait: 0, rx: half }, rank: rankOf(kind), period, ...(scripted ? { scripted } : {}), createdAt: at, returns: 0, interrupts: 0,
+      seg: far ? { tx: TX, wait: len - TX - RX, rx: RX } : { tx: len - half, wait: 0, rx: half }, rank: rankOf(kind), period, ...(scripted ? { scripted } : {}), createdAt: at, returns: 0, interrupts: 0,
       status: 'pending', start: null, hit: null, dropReason: null, resolvedAt: null, createdGs: gs, resolvedGs: null,
     };
     requests.push(r); pending.add(r);
@@ -72,7 +77,7 @@ export function simulate(sc: Scenario, cfg: SimConfig): SimResult {
 
   function runFlex(p: Extract<Placement, { type: 'flex' }>, box: number): void {
     const reg = sc.regions[p.region], pat = patterns[p.region], end = p.start + p.len;
-    timeline.push({ type: 'flex', region: p.region, start: p.start, len: p.len, box, gs });
+    timeline.push({ type: 'flex', region: p.region, start: p.start, len: p.len, box, gs, ...(p.saved ? { saved: p.saved } : {}) });
     targets.forEach((tg, i) => {
       if (tg.state !== 'undetected' || tg.spec.region !== p.region || tg.spec.beam !== pat.idx || !present(i, p.start)) return;
       if (draw(sc.seed, 1, i, tg.looks++) >= P.pdSearch) return;
@@ -89,7 +94,7 @@ export function simulate(sc: Scenario, cfg: SimConfig): SimResult {
     const tg = targets[r.target];
     const hit = present(r.target, p.start) && draw(sc.seed, 2, r.target, tg.dwells++) < (r.kind === 'confirm' ? P.pdConfirm : P.pdTrack);
     r.hit = hit;
-    timeline.push({ type: 'fixed', reqId: r.id, kind: r.kind, target: r.target, hit, start: p.start, len: p.len, box, gs });
+    timeline.push({ type: 'fixed', reqId: r.id, kind: r.kind, target: r.target, hit, start: p.start, len: p.len, box, gs, ...(p.saved ? { saved: p.saved } : {}) });
     if (tg.state === 'gone' || !present(r.target, end)) return;
     if (hit) {
       if (r.kind === 'confirm') { tg.state = 'tracked'; mark(end, r.target, 'track'); }

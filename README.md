@@ -22,7 +22,7 @@
 | 0 導入 | 時間は1本しかない | あり |
 | 1 しくみを知る | 目標の一生、要求の一生、箱の組み立て（1手ずつ）、従来型との比較、特別な場面 | あり |
 | 2 負荷を上げて確かめる | 目標が増えていく60秒間を、1秒ごとに見る | あり |
-| 3 手法を比べて考える | 同じ状況に9つの並べ方を当てる | あり（追加予定あり） |
+| 3 手法を比べて考える | 同じ状況に10の並べ方を当てる | あり |
 | 4 配り方を考える | 並べる前に、何をどれだけ頼むかを決める層 | 準備中 |
 | 5 前提と文献 | モデルの仮定と文献 | 書きかけ |
 
@@ -53,7 +53,7 @@ npm run build  # dist/index.html を1ファイルで出力
 - M. R. Smouse, E. P. Liu, J. J. Sylvester, “Integrated Air and Missile Defense Resource Management,” *Johns Hopkins APL Technical Digest*, vol. 35, no. 2, pp. 99–106, 2020. 公開元：<https://www.jhuapl.edu/techdigest>
   - 動的RSIスケジューリング（1章の中心）の典拠です。論文のPDFはこのリポジトリに含めていません。
 - Han, “Dynamic Adaptive Resource Scheduling for Phased Array Radar: Enhancing Efficiency through Synthesis Priorities and Pulse Interleaving,” arXiv:2409.19201, 2024.
-  - 固定タスクの優先順位（確認 ＞ 精密追尾 ＞ 通常追尾）を決める際に、表1を参照しました。この論文の手法そのものは、まだ実装していません。
+  - 「固定優先度＋インターリーブ」は、この論文のパルスインターリーブの考え方を単純化したものです（送信機のエネルギー制約は省略）。固定タスクの優先順位（確認 ＞ 精密追尾 ＞ 通常追尾）も表1を参照しました。査読前のプレプリントで、式どおりの再現ではありません。
 
 ## ライセンス
 

@@ -109,3 +109,44 @@ export const planTemplate: Planner = (v) => {
   const cause: GapCause | null = mine.length ? 'boundary' : otherWants ? 'window' : null;
   return box(v, null, mine.length ? end : Math.min(end, next), cause);
 };
+
+/**
+ * Fixed priority with pulse interleaving, simplified from Han (arXiv:2409.19201): a dwell is
+ * transmit, wait, receive, and another dwell may use the wait of the dwell just before it.
+ * Two ways: the whole guest inside the wait, or only the guest's transmit inside the wait with
+ * its receive after the host's receive. One guest per host. No transmitter energy limit.
+ * With no waits anywhere this is exactly planPriority.
+ */
+export const planInterleave: Planner = (v) => {
+  const t = v.now, c = candidates(v);
+  const all = [...c.fixed, ...c.search];
+  const host = c.critical ?? best(all, 'priority');
+  const idleTo = Math.min(c.nextFixed, c.nextSearch, c.guard, t + v.cfg.maxDrsi);
+  if (!host) return box(v, null, idleTo, c.searchWants ? 'fragment' : null);
+  const b = box(v, host, 0, null);
+  const seg = host.fixed?.seg, wait = seg?.wait ?? 0;
+  const steps: Box['steps'] = [{ kind: 'ilPick', shown: 1, id: host.fixed?.id ?? null, region: host.fixed ? null : host.region }];
+  let mode: 'whole' | 'tx' | 'none' = 'none', saved = 0, guest: Cand | null = null, end = t + host.len;
+  if (seg && wait > 0) {
+    const txEnd = t + seg.tx, rxStart = t + host.len - seg.rx, hostEnd = t + host.len;
+    // candidates in priority order; the first one that fits either way is the guest
+    for (const g of all.filter((x) => x !== host).sort((a, z) => a.prio - z.prio || a.deadline - z.deadline)) {
+      const gs = g.fixed?.seg ?? { tx: g.len, wait: 0, rx: 0 };
+      let start = -1, gain = 0;
+      if (g.len <= wait) { start = txEnd; gain = g.len; mode = 'whole'; }
+      else if (gs.wait > 0) {
+        const s = Math.max(txEnd, hostEnd - gs.tx - gs.wait); // its receive must not begin before the host's has ended
+        if (s + gs.tx <= rxStart) { start = s; gain = hostEnd - s; mode = 'tx'; }
+      }
+      if (start < 0) continue;
+      if ((g.fixed && start > g.fixed.latest) || start + g.len > c.guard) { mode = 'none'; continue; }
+      guest = g; saved = gain; end = Math.max(hostEnd, start + g.len);
+      b.items.push(g.fixed ? { type: 'fixed', req: g.fixed, start, len: g.len, saved } : { type: 'flex', region: g.region, start, len: g.len, saved });
+      break;
+    }
+    if (!guest) mode = 'none';
+  }
+  steps.push({ kind: 'ilCheck', shown: 1, wait, guestId: guest?.fixed?.id ?? null, guestRegion: guest && !guest.fixed ? guest.region : null, mode, saved });
+  steps.push({ kind: 'ilPlace', shown: b.items.length, end });
+  return { ...b, end, steps };
+};
