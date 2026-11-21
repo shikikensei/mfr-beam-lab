@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MFRビームスケジューリング研究室</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">
+<script type="module" src="/src/main.ts"></script>
+</head>
+<body>
+<main id="app">
+  <header>
+    <div class="eyebrow">MULTI-FUNCTION RADAR / RESOURCE MANAGEMENT</div>
+    <h1>MFRビームスケジューリング研究室</h1>
+    <nav class="chapnav" id="chapnav" aria-label="章"></nav>
+  </header>
+
+  <!-- ===== 0 導入 ===== -->
+  <section class="chapter" id="ch0" data-title="導入" hidden>
+    <p class="see"><b>ここで見るもの</b>時間は1本しかない</p>
+    <p class="lead">多機能レーダは、1本のビームを向け直しながら、空を見張る「捜索」と、見つけた目標を追い続ける「追尾」を両方こなします。ビームは同時に1か所しか照らせないので、2つの仕事は同じ時間を取り合います。</p>
+    <div class="card">
+      <h2>1.2秒間のビームの使い道</h2>
+      <canvas id="strip" role="img" aria-label="1.2秒間にビームが何に使われたかを示す帯"></canvas>
+      <div class="legend">
+        <span><i class="box" style="background:var(--s-search)"></i>捜索</span>
+        <span><i class="box" style="background:var(--s-track)"></i>追尾</span>
+        <span><i class="box" style="background:var(--s-aux)"></i>確認</span>
+        <span><i class="box" style="background:var(--s-idle)"></i>空き</span>
+      </div>
+      <div class="field"><label for="n0">追っている目標の数 <output id="n0Out" for="n0"></output></label><input type="range" id="n0" min="0" max="24" step="1" value="6"></div>
+      <p class="result" id="stripOut"></p>
+      <p class="note">目標が増えると追尾の帯が増え、捜索に回せる時間が減ります。足りなくなったとき、何をどの順に並べ、何をあきらめるか。それを決めるのがスケジューラです。</p>
+    </div>
+    <div class="card">
+      <h2>先に覚える言葉は3つ</h2>
+      <dl class="terms">
+        <dt>ドウェル</dt><dd>ビームを1方向に向けて、送信して受信するまでのひとまとまり。帯の1コマがドウェル1回です。</dd>
+        <dt>固定タスク</dt><dd>「この時刻に照らしたい」という要求があるもの。追尾の更新が代表です。少しなら前後にずらせます（その幅がスラック）。</dd>
+        <dt>柔軟タスク</dt><dd>時刻の指定はなく、「一巡をこの時間内に終えたい」というペースの目標だけがあるもの。捜索が代表です。</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>このページの進み方</h2>
+      <ol class="chapters" start="1">
+        <li><b>しくみを知る</b><span>スローモーションで、箱が1つ組み上がるまでを追います。</span></li>
+        <li><b>負荷を上げて確かめる</b><span>目標を増やし、何が削られるかを見ます。</span></li>
+        <li><b>手法を比べて考える</b><span>同じ状況に別の並べ方を当てます。（2勾配などは準備中）</span></li>
+        <li><b>配り方を考える</b><span>並べる前に、何をどれだけ頼むかを決める層を見ます。（準備中）</span></li>
+        <li><b>前提と文献</b><span>このモデルが置いた仮定と、元にした公開文献です。</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ===== 1 しくみを知る ===== -->
+  <section class="chapter" id="ch1" data-title="しくみを知る" hidden>
+    <p class="see"><b>ここで見るもの</b>追尾を後ろに寄せると、その手前が捜索に使える</p>
+    <div class="parts" id="parts" role="tablist" aria-label="1章の内容">
+      <button role="tab" data-part="1">① 目標の一生</button>
+      <button role="tab" data-part="2">② 要求の一生</button>
+      <button role="tab" data-part="3">③ 箱の組み立て</button>
+      <button role="tab" data-part="4">④ 従来型と比べる</button>
+      <button role="tab" data-part="5">⑤ 特別な場面</button>
+    </div>
+
+    <div class="card part" data-part="1">
+      <h2>① 目標の一生</h2>
+      <p>目標1つに注目して、レーダから見た一生を追います。見つかり、確かめられ、追われ、ときどき外れます。この流れが、スケジューラに届く要求を生みます。</p>
+      <ol class="states" id="lifeStates"></ol>
+      <canvas id="lifeCv" role="img" aria-label="1つの目標への照射を時刻順に示すタイムライン"></canvas>
+      <div class="legend">
+        <span><i class="box" style="background:var(--s-aux)"></i>探知◆・確認照射</span>
+        <span><i class="box" style="background:var(--s-track)"></i>追尾更新・再照射</span>
+        <span><i class="box" style="border:1px solid var(--ink2)"></i>許容範囲（縦線が要求時刻）</span>
+        <span><i class="box" style="background:var(--accent-soft)"></i>追尾中</span>
+        <span><b class="x">✕</b> 外れ・取りこぼし</span>
+      </div>
+      <div class="event" aria-live="polite"><b id="lifeTitle"></b><p id="lifeBody"></p></div>
+      <div class="player">
+        <button type="button" id="lifePrev" class="ghost" aria-label="前のできごと">◀</button>
+        <button type="button" id="lifeNext">次のできごと ▶</button>
+        <span class="count" id="lifeCount"></span>
+      </div>
+      <p class="note">当たり外れは乱数で決めています（探知確率は捜索 0.85、確認 0.92、追尾 0.88。説明用の値です）。</p>
+    </div>
+
+    <div class="card part" data-part="2">
+      <h2>② 要求の一生</h2>
+      <p>固定タスクの要求は、3つの数字でできています。<b>要求時刻</b>（照らしたい時刻）、<b>スラック</b>（前後にずらせる幅）、<b>長さ</b>（ドウェルが占める時間）です。</p>
+      <svg id="reqFig" viewBox="0 0 340 120" role="img" aria-label="要求時刻、許容範囲、ドウェルの位置関係"></svg>
+      <div class="field"><label for="reqPos">スケジューラが置いた開始位置 <output id="reqPosOut" for="reqPos"></output></label><input type="range" id="reqPos" min="-40" max="40" step="1" value="-12"></div>
+      <p class="result" id="reqOut"></p>
+      <ul class="plain">
+        <li><b>範囲の中で実行できた：</b>当たれば、次の要求を「実際に照らした時刻 ＋ 更新間隔」に出します。外れたら、すぐ後に再照射を頼みます。</li>
+        <li><b>範囲を過ぎた：</b>取りこぼしです。外れ1回と同じ扱いになります。</li>
+        <li><b>前にずらすほど</b>次の更新も早く来るので、追尾の仕事は少し増えます。</li>
+      </ul>
+      <h3>固定タスクの種類と優先順位</h3>
+      <ol class="prio">
+        <li><b>緊急</b><span>スラックなし。要求時刻ちょうどに実行する</span></li>
+        <li><b>確認照射</b><span>探知した直後。逃すと手がかりを失う</span></li>
+        <li><b>再照射</b><span>外れた直後。逃すとロストに近づく</span></li>
+        <li><b>追尾更新（高機動）</b><span>更新間隔 0.3 s</span></li>
+        <li><b>追尾更新</b><span>更新間隔 0.6 s</span></li>
+      </ol>
+      <p class="note">順位と数値は、このページが説明のために置いたものです。理由は5章にあります。</p>
+    </div>
+
+    <div class="card part" data-part="3">
+      <h2>③ 箱の組み立て</h2>
+      <p>動的RSIは、次の固定タスクまでを1つの「箱」にして、4手で組み立てます。①次の固定タスクを選んで、いちばん遅い位置に仮置きする。②捜索の不足量を計算する。③箱を捜索で前から詰める。④固定タスクを前に寄せて、空きを閉じる。</p>
+      <p class="note">既定の「＋先読み」は本ツールの拡張で、①の仮置きで後ろに待つ固定タスクの場所も確保します。「論文の記述どおり」に切り替えると、その処理を外した動きになります。</p>
+    </div>
+    <div class="card part" data-part="4">
+      <h2>④ 従来型と比べる</h2>
+      <p>従来型は、決まった長さの箱を用意し、固定タスクを要求時刻に置いてから、残りを捜索で埋めます。固定タスクを動かさないので、その前後に捜索1本ぶんに満たない細切れが残ります。下で方式を切り替えると、同じ時刻の箱を見比べられます。</p>
+      <div class="tablewrap"><table id="cmp"></table></div>
+      <p class="note">同じ6秒間のシナリオでの成績です。「上位タスク」は、通常の追尾更新より優先度の高い固定タスク（緊急・確認照射・再照射・高機動の追尾更新）です。主な違いは隙間と捜索に出ます。取りこぼしの件数は、スラックや箱の長さなどの設定で大きく変わります。「論文の記述どおり」は本ツールによる解釈で、論文の方式そのものの優劣を示すものではありません。隙間は「入れたかったが入らなかった時間」、余裕は「頼むものがなかった時間」です。</p>
+    </div>
+    <div class="card part" data-part="5">
+      <h2>⑤ 特別な場面</h2>
+      <h3>次の固定タスクの選び方：3つのケース</h3>
+      <p>優先度の高いタスクAと、低いタスクBが近い時刻に重なったとき、どちらを次の固定タスクにするか。論文は3つの場合に分けています。</p>
+      <p class="note"><b>手で組んだ入力です。</b>論文の図5〜7と同じ形の状況を再現するために、本ツールが数値を置きました（論文の図に数値はありません）。乱数は使わず、目標も動きません。捜索は 10 ms のビーム1種類で、空きは捜索で埋め切る設定です。同じ入力をエンジンのテストでも使っています。</p>
+      <div class="hands" id="hands"></div>
+      <h3>そのほかの場面</h3>
+      <p>こちらは説明用シナリオ（乱数あり）の中から、その場面が起きる箱へ飛びます。</p>
+      <div class="scenes" id="scenes"></div>
+      <p class="note" id="sceneNote"></p>
+    </div>
+
+    <div class="card" id="stage">
+      <div class="seg" id="methods" role="radiogroup" aria-label="方式"></div>
+      <div class="legend">
+        <span><i class="box" style="background:var(--s-search)"></i>捜索</span>
+        <span><i class="box" style="background:var(--s-track)"></i>追尾更新・再照射</span>
+        <span><i class="box" style="background:var(--s-aux)"></i>探知◆・確認照射</span>
+        <span><i class="box" style="background:var(--s-urgent)"></i>緊急</span>
+        <span><i class="box" style="border:1px solid var(--ink2)"></i>許容範囲（縦線が要求時刻）</span>
+        <span><i class="box" style="border:1px dashed var(--s-track)"></i>仮置き</span>
+        <span><i class="box" style="background:var(--over)"></i>隙間</span>
+        <span><b class="x">✕</b> 外れ・取りこぼし</span>
+      </div>
+      <canvas id="cv" role="img" aria-label="目標ごとの要求と照射、捜索、箱の組み立てを示すタイムライン"></canvas>
+      <div id="caption" aria-live="polite"></div>
+      <div class="player">
+        <button type="button" id="prev" class="ghost" aria-label="1手戻る">◀</button>
+        <button type="button" id="next">1手進む ▶</button>
+        <button type="button" id="play" class="ghost">▶ 再生</button>
+        <div class="field grow"><label for="step">手順 <output id="stepOut" for="step"></output></label><input type="range" id="step" min="0" max="10" step="1" value="0"></div>
+      </div>
+      <details>
+        <summary>設定を変える</summary>
+        <div class="grid2">
+          <div class="field"><label for="n">目標数 <output id="nOut" for="n"></output></label><input type="range" id="n" min="2" max="24" step="1" value="6"></div>
+          <div class="field"><label for="fill">余った時間の扱い</label><select id="fill"><option value="pace">捜索は所望ペースまで（論文の記述どおり）</option><option value="full">空きを捜索で埋め切る</option></select></div>
+        </div>
+        <label class="check"><input type="checkbox" id="crit"> 緊急タスクを入れる（1.5秒と3.2秒）</label>
+      </details>
+    </div>
+    <div class="partnext"><button type="button" id="partNext"></button></div>
+  </section>
+
+  <!-- ===== 2 負荷を上げて確かめる ===== -->
+  <section class="chapter" id="ch2" data-title="負荷を上げて確かめる" hidden>
+    <p class="see"><b>ここで見るもの</b>線が上限を超えたとき、何が削られるか</p>
+    <p class="lead">1章と同じレーダで、60秒間を通して見ます。目標がだんだん現れ、「入れたい量」が増えていきます。柱は1秒ごとのビームの使い道です。</p>
+    <div class="card">
+      <h2>状況を選ぶ</h2>
+      <div class="scenes" id="presets" role="radiogroup" aria-label="状況"></div>
+      <p class="note" id="presetNote"></p>
+      <div class="field"><label for="labMethod">並べ方</label><select id="labMethod"></select></div>
+      <p class="note" id="labHow"></p>
+    </div>
+    <div class="card">
+      <h2>1秒ごとのビームの使い道</h2>
+      <div class="legend">
+        <span><i class="box" style="background:var(--s-search)"></i>捜索</span>
+        <span><i class="box" style="background:var(--s-track)"></i>追尾更新</span>
+        <span><i class="box" style="background:var(--s-aux)"></i>確認・再照射</span>
+        <span><i class="box" style="background:var(--over)"></i>隙間・入りきらない分</span>
+        <span><i class="box" style="background:var(--s-idle)"></i>余裕</span>
+        <span><i class="box" style="width:16px;height:2px;border-radius:0;background:var(--ink)"></i>入れたい量</span>
+      </div>
+      <div class="chart" id="stack2"></div>
+      <p class="result" id="verdict2"></p>
+      <div class="player">
+        <button type="button" id="play2" class="ghost">▶ 再生</button>
+        <div class="field grow"><label for="sel2">見る1秒 <output id="sel2Out" for="sel2"></output></label><input type="range" id="sel2" min="0" max="59" step="1" value="45"></div>
+      </div>
+      <canvas id="strip2" role="img" aria-label="選んだ1秒間のビームの使い道"></canvas>
+      <p class="note" id="read2" aria-live="polite"></p>
+      <p class="note">「入れたい量」は、捜索を所望のペースで回す時間と、いる目標すべてを更新間隔どおりに追う時間の合計です。確認照射と再照射は含みません（並べ方の結果で変わるため）。柱は左右になぞると選べます。</p>
+    </div>
+    <div class="card">
+      <h2>60秒間の成績</h2>
+      <dl class="calc" id="kpi2"></dl>
+      <p class="note">取りこぼしの件数は、本ツールが置いた外れと再照射のモデル、スラックの幅、箱の最大長に強く左右されます（5章）。</p>
+    </div>
+  </section>
+
+  <!-- ===== 3 手法を比べて考える ===== -->
+  <section class="chapter" id="ch3" data-title="手法を比べて考える" hidden>
+    <p class="see"><b>ここで見るもの</b>各手法が何を犠牲にしているか</p>
+    <p class="lead">時間が足りなくなったら、何かをあきらめるしかありません。並べ方の違いは、何をあきらめるかの違いです。同じ状況、同じ要求、同じ乱数に、8つの並べ方を当てます。</p>
+    <div class="card">
+      <h2>状況</h2>
+      <div class="scenes" id="presets3" role="radiogroup" aria-label="状況"></div>
+      <p class="note" id="presetNote3"></p>
+    </div>
+    <div class="card">
+      <h2>8つの並べ方の成績</h2>
+      <div class="tablewrap"><table id="score"></table></div>
+      <p class="note">60秒間の合計です。<b>捜索</b>は、頼みたい量のうち実行できた割合（小さい字は水平線／上空）。<b>隙間</b>は、入れたかったのに入らなかった時間。<b>うち上位</b>は、通常の追尾更新より優先度の高い固定タスク（確認照射・再照射・高機動の追尾更新）の取りこぼしです。件数の単位は「件」。</p>
+      <p class="note">取りこぼしの件数は設定に強く左右されます。「論文の記述どおり」は本ツールの解釈と説明用シナリオでの結果で、論文の方式そのものの優劣を示すものではありません。</p>
+    </div>
+    <div class="card">
+      <h2>2つを並べて見る</h2>
+      <div class="grid2">
+        <div class="field"><label for="labA">並べ方 A</label><select id="labA"></select></div>
+        <div class="field"><label for="labB">並べ方 B</label><select id="labB"></select></div>
+      </div>
+      <div class="legend">
+        <span><i class="box" style="background:var(--s-search)"></i>捜索</span>
+        <span><i class="box" style="background:var(--s-track)"></i>追尾更新</span>
+        <span><i class="box" style="background:var(--s-aux)"></i>確認・再照射</span>
+        <span><i class="box" style="background:var(--over)"></i>隙間・入りきらない分</span>
+        <span><i class="box" style="background:var(--s-idle)"></i>余裕</span>
+        <span><i class="box" style="width:16px;height:2px;border-radius:0;background:var(--ink)"></i>入れたい量</span>
+      </div>
+      <h3 id="nameA"></h3>
+      <div class="chart" id="stackA"></div>
+      <h3 id="nameB"></h3>
+      <div class="chart" id="stackB"></div>
+      <div class="player">
+        <button type="button" id="play3" class="ghost">▶ 再生</button>
+        <div class="field grow"><label for="sel3">見る1秒 <output id="sel3Out" for="sel3"></output></label><input type="range" id="sel3" min="0" max="59" step="1" value="45"></div>
+      </div>
+      <div class="ab"><b>A</b><canvas id="stripA" role="img" aria-label="Aの、選んだ1秒間のビームの使い道"></canvas></div>
+      <div class="ab"><b>B</b><canvas id="stripB" role="img" aria-label="Bの、選んだ1秒間のビームの使い道"></canvas></div>
+      <p class="note" id="read3" aria-live="polite"></p>
+    </div>
+    <div class="card">
+      <h2>目標数を変えると</h2>
+      <p>目標が最初から全部いる30秒間を、目標数を変えて繰り返した結果です。AとBは上で選んだ2つです。</p>
+      <div class="legend">
+        <span><i class="box" style="width:18px;height:2px;border-radius:0;background:var(--accent)"></i>A <span id="swA"></span></span>
+        <span><i class="box" style="width:18px;height:0;border-radius:0;border-top:2px dashed var(--ink2)"></i>B <span id="swB"></span></span>
+      </div>
+      <h3>捜索：頼みたい量のうち実行できた割合</h3>
+      <div class="chart" id="swSearch"></div>
+      <h3>固定タスク：要求のうち取りこぼした割合</h3>
+      <div class="chart" id="swDrop"></div>
+      <p class="note" id="swRead" aria-live="polite"></p>
+      <div class="tablewrap"><details><summary>数値の表</summary><table id="swTable"></table></details></div>
+    </div>
+    <div class="card">
+      <h2>それぞれの並べ方</h2>
+      <dl class="terms" id="hows"></dl>
+      <p class="note">到着順からタイムバランスまでの5つは、ドウェルを1つずつ選ぶ単純な規則として本ツールが書いたものです。固定タスクは要求時刻より前には実行しません。どれも1章と同じ要求・許容範囲・乱数の上で動かしています。細かい取り決めは5章にあります。</p>
+    </div>
+  </section>
+
+  <section class="chapter" id="ch4" data-title="配り方を考える" hidden>
+    <p class="see"><b>ここで見るもの</b>並べ方の前に、何をどれだけ頼むかを決める層がある</p>
+    <div class="card"><h2>準備中</h2><p>資源の配り方（Q-RAM）を扱う画面をここに作ります。</p></div>
+  </section>
+
+  <!-- ===== 5 前提と文献（暫定） ===== -->
+  <section class="chapter" id="ch5" data-title="前提と文献" hidden>
+    <p class="see"><b>この章について</b>書きかけです。いま動いている部分の前提だけを載せています</p>
+    <div class="card">
+      <h2>このモデルの性格</h2>
+      <ul class="plain">
+        <li>公開文献の考え方を単純化した教育用モデルです。特定の装置の方式や数値は含みません。</li>
+        <li>少数の目標と長めのドウェルにして、1手ずつ追えるようにしています。数値はすべて説明用です。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>方式の呼び名と、論文との関係</h2>
+      <ul class="plain">
+        <li><b>動的RSI（論文の記述どおり）：</b>Smouse, Liu &amp; Sylvester (2020) の文章と図から読み取れる手順を、本ツールが解釈して実装したものです。論文が決めていない点は本ツールが埋めています。</li>
+        <li><b>動的RSI＋先読み（本ツールの拡張）：</b>上の手順に、待っている固定タスクの場所を先に確保する処理を足したものです。論文にはありません。論文は「先読みなし」と明記しています。</li>
+        <li><b>従来型：</b>論文の記述は「固定長の区間を、優先度の高いキューから順に埋める」までです。細部は本ツールが、従来型が不当に不利にならないように置きました。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>取りこぼしの件数について</h2>
+      <ul class="plain">
+        <li>論文には、シミュレーションの条件も結果の数値も載っていません。あるのは手順の説明と、定性的な記述だけです。</li>
+        <li>このページの取りこぼし件数は、本ツールが足した「外れと再照射」のモデル、スラックの幅、箱の最大長に強く左右されます。論文にこれらの値はありません。</li>
+        <li>そのため、取りこぼし件数の大小を、論文の方式そのものの優劣として読むことはできません。設定を変えても残る違いは、隙間と、捜索に回せる時間です。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>3つのケースの場面（1章⑤）</h2>
+      <ul class="plain">
+        <li>タスクAとタスクBの入力は、本ツールが手で組んだものです。論文の図5〜7は形だけを示していて、数値はありません。</li>
+        <li>手組みの要求は、必ず実行でき、次の要求を生みません。当たり外れの乱数も使いません。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>2・3章の5つの並べ方</h2>
+      <ul class="plain">
+        <li>到着順、固定テンプレート、固定優先度、最早期限優先、タイムバランスは、名前の示す規則を本ツールが単純な形で書いたものです。特定の文献の手順を再現したものではありません。</li>
+        <li>5つとも、ドウェルを1つずつ選びます。固定タスクは要求時刻から最遅開始までの間に実行し、要求時刻より前には動かしません。</li>
+        <li>捜索のビームは、所望のペースで回したときにそのビームを終えているべき時刻から「用意ができた」とみなします。期限はそこから1ビームぶん後です。</li>
+        <li>タイムバランスの「周期」は、追尾は更新間隔、確認照射と再照射は要求までの待ち時間、捜索は1ビームぶんの持ち時間です。この取り方で結果は変わります。</li>
+        <li>固定テンプレートは 100 ms 周期で、先頭 40 % が固定タスク用、残りが捜索用です。ドウェルは自分の枠の中で終わらなければ置きません。</li>
+        <li>緊急タスクが通知されたら、どの並べ方も、その開始時刻をまたぐドウェルは始めません。</li>
+        <li>「上位タスク」は、通常の追尾更新より上の4つのキュー（緊急・確認照射・再照射・高機動の追尾更新）です。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>文献</h2>
+      <p>M. R. Smouse, E. P. Liu, J. J. Sylvester, “Integrated Air and Missile Defense Resource Management,” <i>Johns Hopkins APL Technical Digest</i>, vol. 35, no. 2, pp. 99–106, 2020. www.jhuapl.edu/techdigest</p>
+      <p class="note">ほかの文献は、対応する章を作るときに原典を確認してから載せます。</p>
+    </div>
+  </section>
+
+  <nav class="pager" aria-label="章の移動">
+    <button type="button" id="chPrev" class="ghost">◀ 前の章</button>
+    <span id="chNow"></span>
+    <button type="button" id="chNext">次の章 ▶</button>
+  </nav>
+  <footer>公開文献の考え方を単純化した教育用モデルです。特定の装置の方式や数値は含みません。計算はすべてブラウザ内で行います。</footer>
+</main>
+</body>
+</html>

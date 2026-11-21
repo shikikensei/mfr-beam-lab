@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MFRビームスケジューリング研究室</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* layout: single column lab bench. controls on top, A/B evidence below, sweep last */
+:root{
+  --page:#f4f5f7; --surface:#fcfcfb; --ink:#0d1420; --ink2:#4b5361; --muted:#7f8691;
+  --line:#dfe1e6; --axis:#bfc3cb; --accent:#1d3f6e; --accent-soft:#e3eaf4;
+  --s-search:#2a78d6; --s-track:#eb6834; --s-aux:#1baf7a; --s-idle:#e4e6ea;
+  --a:#6250d6; --b:#eda100;
+  --m1:#2a78d6; --m2:#eb6834; --m3:#1baf7a; --m4:#eda100; --m5:#e87ba4; --m6:#008300;
+  --over:#f3c9c6; --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+  --font:"IBM Plex Sans JP",system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --page:#0c0e12; --surface:#17191d; --ink:#eef0f3; --ink2:#bcc1c9; --muted:#8a909a;
+    --line:#2a2d33; --axis:#3a3e46; --accent:#a9c4ea; --accent-soft:#1f2a3a;
+    --s-search:#3987e5; --s-track:#d95926; --s-aux:#199e70; --s-idle:#2a2d33; --over:#5a2a2a;
+    --a:#9085e9; --b:#c98500;
+    --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#c98500; --m5:#d55181; --m6:#0ca30c;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --page:#0c0e12; --surface:#17191d; --ink:#eef0f3; --ink2:#bcc1c9; --muted:#8a909a;
+  --line:#2a2d33; --axis:#3a3e46; --accent:#a9c4ea; --accent-soft:#1f2a3a;
+  --s-search:#3987e5; --s-track:#d95926; --s-aux:#199e70; --s-idle:#2a2d33; --over:#5a2a2a;
+  --a:#9085e9; --b:#c98500;
+  --m1:#3987e5; --m2:#d95926; --m3:#199e70; --m4:#c98500; --m5:#d55181; --m6:#0ca30c;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.65}
+main{max-width:920px;margin:0 auto;padding:28px 16px 56px;display:flex;flex-direction:column;gap:22px}
+header .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--muted)}
+h1{font-size:26px;line-height:1.3;margin:4px 0 8px;font-weight:700;text-wrap:balance}
+header p{margin:0;color:var(--ink2);max-width:38em}
+h2{font-size:17px;margin:0 0 4px;font-weight:700}
+h3{font-size:14px;margin:0;font-weight:500}
+.note{color:var(--ink2);font-size:13px;margin:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
+@media (max-width:640px){.grid2,.grid3{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:13px;color:var(--ink2);display:flex;justify-content:space-between;gap:8px}
+.field output{font-family:var(--mono);color:var(--ink);font-size:13px}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0;height:28px}
+select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--axis);border-radius:6px;padding:8px 10px;width:100%}
+select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.side{border-top:3px solid var(--a);gap:10px}
+.side.b{border-top-color:var(--b)}
+.tag{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:14px}
+.sw{display:inline-block;width:18px;height:0;border-top:3px solid var(--a)}
+.sw.b{border-top:3px dashed var(--b)}
+.box{display:inline-block;width:11px;height:11px;border-radius:2px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left;white-space:normal;min-width:9em}
+thead th{font-weight:500;color:var(--ink2);font-size:12.5px}
+td{font-variant-numeric:tabular-nums}
+td small{color:var(--muted);font-size:11.5px}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);margin-left:6px;color:var(--ink)}
+.chip i{font-style:normal;font-size:10px}
+.chip.good i{color:var(--good)} .chip.warn i{color:var(--warn)} .chip.crit i{color:var(--crit)}
+.chip.crit{border-color:var(--crit)}
+.stackhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:4px}
+.stackhead .mname{font-size:12.5px;color:var(--ink2)}
+.stackhead .verdict{font-size:13.5px;font-weight:500;flex-basis:100%}
+.player{display:flex;gap:14px;align-items:center}
+button{font:inherit;font-size:14px;color:var(--surface);background:var(--accent);border:0;border-radius:6px;padding:9px 14px;cursor:pointer;white-space:nowrap}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#secRead b,#mStats b{font-family:var(--mono);font-weight:500;color:var(--ink)}
+@media (max-width:640px){th,td{padding:7px 4px;font-size:13px}th:first-child,td:first-child{min-width:6.5em}.chip{display:flex;width:max-content;margin:2px 0 0 auto}}
+canvas{width:100%;display:block}
+.phases{display:flex;flex-wrap:wrap;gap:4px 6px;font-size:12px;color:var(--muted)}
+.phases span{padding:2px 8px;border:1px solid var(--line);border-radius:99px}
+.phases span.on{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:500}
+#mCaption p{margin:8px 0 0;font-size:14px;min-height:6.6em}
+.fulfil{display:grid;grid-template-columns:auto 1fr auto;gap:3px 8px;align-items:center;font-size:12.5px;color:var(--ink2)}
+.fulfil b{font-family:var(--mono);font-weight:500;color:var(--ink);text-align:right;min-width:5em}
+.ftd{position:relative;height:8px;background:var(--s-idle);border-radius:4px}
+.ftd::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;border-left:1px solid var(--ink2)}
+.ftd i{position:absolute;top:0;bottom:0;border-radius:4px}
+#mPrev,#mNext{background:var(--surface);color:var(--accent);border:1px solid var(--axis)}
+.player{flex-wrap:wrap}
+.chart{position:relative}
+.chart svg{display:block;width:100%;touch-action:pan-y}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--axis);border-radius:6px;padding:6px 8px;font-size:12px;line-height:1.5;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;z-index:2}
+.tip b{font-family:var(--mono);font-weight:500}
+details summary{cursor:pointer;color:var(--accent);font-size:13.5px}
+details>*+*{margin-top:10px}
+ul.plain{margin:0;padding-left:1.2em;color:var(--ink2);font-size:13.5px;max-width:44em}
+ul.plain li+li{margin-top:4px}
+footer{color:var(--muted);font-size:12.5px}
+#sweepStatus{font-family:var(--mono);font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="eyebrow">MULTI-FUNCTION RADAR / RESOURCE MANAGEMENT</div>
+  <h1>MFRビームスケジューリング研究室</h1>
+  <p>捜索と追尾が1本のビームの時間を取り合う様子を可視化します。スケジューリング手法を2つ選び、同じシナリオで追尾品質と捜索更新率を比べられます。</p>
+</header>
+
+<section class="card" id="micro">
+  <div><h2>しくみをスローモーションで見る</h2>
+  <p class="note">目標を少数にし、ドウェルを長めにした説明用シナリオです。追尾や確認照射のように時刻が決まった仕事（固定タスク）を先に置き、その手前を捜索（柔軟タスク）で埋めて1つの箱を作る、動的RSI方式を1手ずつ追えます。</p></div>
+  <div class="grid2">
+    <div class="field"><label for="mMode">方式</label><select id="mMode"><option value="drsi">動的RSI（添付論文の方式）</option><option value="legacy">従来型（固定長の箱・優先度順）</option></select></div>
+    <div class="field"><label for="mN">目標数 <output id="mNOut"></output></label><input type="range" id="mN" min="2" max="14" step="1" value="6"></div>
+  </div>
+  <div class="legend">
+    <span><span class="box" style="background:var(--s-search)"></span>捜索</span>
+    <span><span class="box" style="background:var(--s-track)"></span>追尾更新</span>
+    <span><span class="box" style="background:var(--s-aux)"></span>探知◆・確認照射</span>
+    <span><span class="box" style="border:1px solid var(--ink2)"></span>要求の許容範囲（縦線が要求時刻）</span>
+    <span><span class="box" style="background:var(--accent-soft)"></span>追尾中</span>
+    <span><span class="box" style="background:var(--over)"></span>隙間・空き</span>
+    <span><b style="color:var(--crit)">✕</b> 外れ・取りこぼし</span>
+  </div>
+  <canvas id="mCanvas" role="img" aria-label="目標ごとの要求と照射、捜索パターン、箱の組み立てを示すタイムライン"></canvas>
+  <div id="mCaption"></div>
+  <div id="mFtd" class="fulfil"></div>
+  <div class="player">
+    <button type="button" id="mPrev" aria-label="1手戻る">◀</button>
+    <button type="button" id="mNext" aria-label="1手進む">▶ 1手</button>
+    <button type="button" id="mPlay">▶ 再生</button>
+    <div class="field" style="flex:1"><label for="mStep">手順 <output id="mStepOut"></output></label><input type="range" id="mStep" min="0" max="10" step="1" value="0"></div>
+  </div>
+  <p class="note" id="mStats"></p>
+  <div class="tablewrap"><table id="mCompare"></table></div>
+  <p class="note">太字の目標は高機動（更新間隔 0.3 s、優先度高）、それ以外は 0.6 s。動的RSIの箱は最大 150 ms、従来型の箱は 100 ms 固定。</p>
+</section>
+
+<div><h2>負荷を上げて手法を比べる</h2><p class="note">ここから下は、目標数を増やしたときの全体の振る舞いです。</p></div>
+
+<section class="card" aria-label="シナリオ">
+  <div><h2>シナリオ</h2><p class="note">値を動かすと、その場で95秒分を再計算します。</p></div>
+  <div class="grid3">
+    <div class="field"><label for="nTargets">目標数 <output id="nTargetsOut"></output></label><input type="range" id="nTargets" min="0" max="220" step="10" value="140"></div>
+    <div class="field"><label for="highFrac">高機動目標の割合 <output id="highFracOut"></output></label><input type="range" id="highFrac" min="0" max="60" step="5" value="20"></div>
+    <div class="field"><label for="frameReq">水平線の捜索フレームタイム要求 <output id="frameReqOut"></output></label><input type="range" id="frameReq" min="1.5" max="6" step="0.5" value="3"></div>
+  </div>
+</section>
+
+<section class="grid2" aria-label="比較する手法">
+  <div class="card side">
+    <span class="tag"><span class="sw"></span>手法 A</span>
+    <div class="field"><label for="schedA">スケジューラ</label><select id="schedA"></select></div>
+    <div class="field"><label for="updA">追尾更新</label><select id="updA"><option value="fixed">固定間隔</option><option value="adaptive">適応更新レート</option></select></div>
+  </div>
+  <div class="card side b">
+    <span class="tag"><span class="sw b"></span>手法 B</span>
+    <div class="field"><label for="schedB">スケジューラ</label><select id="schedB"></select></div>
+    <div class="field"><label for="updB">追尾更新</label><select id="updB"><option value="fixed">固定間隔</option><option value="adaptive">適応更新レート</option></select></div>
+  </div>
+</section>
+
+<details class="card">
+  <summary>手法パラメータ</summary>
+  <div class="grid2">
+    <div class="field"><label for="fixedInt">固定間隔のときの追尾更新間隔 <output id="fixedIntOut"></output></label><input type="range" id="fixedInt" min="0.5" max="3" step="0.25" value="1"></div>
+    <div class="field"><label for="trackFrac">固定テンプレートの追尾枠 <output id="trackFracOut"></output></label><input type="range" id="trackFrac" min="20" max="80" step="5" value="40"></div>
+  </div>
+</details>
+
+<section class="card">
+  <div><h2>箱の埋まり方</h2><p class="note">縦の1本が1秒ぶんの箱です。目標は最初の50秒で少しずつ現れ、追尾の仕事が増えていきます。黒い線が入れたい量で、箱の上限を超えた分は入りきりません。</p></div>
+  <div class="legend">
+    <span><span class="box" style="background:var(--s-search)"></span>捜索</span>
+    <span><span class="box" style="background:var(--s-track)"></span>追尾更新</span>
+    <span><span class="box" style="background:var(--s-aux)"></span>確認・再照射</span>
+    <span><span class="box" style="background:var(--s-idle)"></span>空き</span>
+  </div>
+  <div class="legend">
+    <span><span class="sw" style="border-top:2px solid var(--ink)"></span>入れたい量</span>
+    <span><span class="box" style="background:var(--over)"></span>入りきらない分</span>
+  </div>
+  <div id="stacks" style="display:flex;flex-direction:column;gap:16px"></div>
+  <div class="player">
+    <button type="button" id="play" aria-label="再生">▶ 再生</button>
+    <div class="field" style="flex:1"><label for="sel">見る時刻 <output id="selOut"></output></label><input type="range" id="sel" min="0" max="94" step="1" value="70"></div>
+  </div>
+  <div><h3>この1秒の中身</h3><p class="note">選んだ1秒の箱を、ビームを打った順に左から並べたものです。捜索は領域ごとに高さを変えています。</p></div>
+  <canvas id="timeline" height="96" role="img" aria-label="選んだ1秒間の手法AとBのビーム割当"></canvas>
+  <div id="secRead" class="note"></div>
+</section>
+
+<section class="card">
+  <div><h2>結果</h2><p class="note">全目標が出そろった60秒以降の集計です。フレームタイムは「達成 / 要求」、予測誤差はビーム幅に対する比。</p></div>
+  <div class="tablewrap"><table id="kpi"></table></div>
+</section>
+
+<section class="grid2">
+  <div class="card">
+    <div><h3>追尾中の目標数</h3></div>
+    <div class="legend"><span><span class="sw"></span>A</span><span><span class="sw b"></span>B</span></div>
+    <div class="chart" id="chTracked"></div>
+  </div>
+  <div class="card">
+    <div><h3>水平線フレームタイムの推移（秒）</h3></div>
+    <div class="legend"><span><span class="sw"></span>A</span><span><span class="sw b"></span>B</span></div>
+    <div class="chart" id="chFrame"></div>
+  </div>
+</section>
+
+<section class="card">
+  <div><h2>目標数を振って全手法を比べる</h2>
+  <p class="note">上のシナリオと手法パラメータのまま、目標数だけを変えて（60秒以降を集計）6つのスケジューラを走らせます。追尾更新は手法Aの設定を使います。<span id="sweepStatus"></span></p></div>
+  <div class="legend" id="sweepLegend"></div>
+  <div class="grid2">
+    <div><h3>追尾維持率（%）</h3><div class="chart" id="chSweepHeld"></div></div>
+    <div><h3>水平線フレームタイム（達成 ÷ 要求）</h3><div class="chart" id="chSweepFrame"></div></div>
+  </div>
+  <details><summary>数値を表で見る</summary><div class="tablewrap"><table id="sweepTable"></table></div></details>
+</section>
+
+<section class="card">
+  <h2>モデルの前提</h2>
+  <ul class="plain">
+    <li>公開文献にある一般的な考え方をもとにした教育用の簡易モデルです。特定の装置の方式や数値は含みません。</li>
+    <li>捜索は3領域（水平線 150ビーム×5 ms、中高度 200ビーム×3 ms、高仰角 150ビーム×2 ms）。フレームタイム要求は水平線の値に比例して3領域とも変わります。</li>
+    <li>目標は捜索ビームで探知（Pd 0.8）→ 確認照射 → 追尾に移行。追尾ドウェルは目標ごとに2〜8 ms。</li>
+    <li>追尾の予測誤差は前回更新からの経過時間の1.5乗で増え、誤差が大きいほどビーム形状損失で探知確率が下がります。3回連続で外すと追尾ロストとなり、再び捜索で見つかるまで戻りません。</li>
+    <li>適応更新レートは、予測誤差がビーム幅の一定割合に達する時点で更新する考え方です（高機動 0.8 s、中機動 2 s、低機動 4 s）。</li>
+    <li>タイムバランスは、各タスクの遅れを自身の周期で割った値が最大のものを選びます。過負荷時に捜索と追尾が同じ割合で遅れます。</li>
+    <li>スローモーション画面は、Smouse・Liu・Sylvester (2020) の動的RSI方式を単純化したものです。固定タスクは期限の早い順に選び、優先度の高い要求と重なる場合は見送ります。捜索は不足量の大きいパターンから詰め、余裕があれば所望より速く回します。割り込み処理は省いています。</li>
+    <li>スローモーション画面の従来型は、固定長の箱に固定タスクを優先度順に置き、残りを優先度の高い捜索から、所望のペースに遅れている分だけ埋める方式です。</li>
+    <li>下の比較にある動的RSIは同じ考え方の簡略版です。追尾は許容範囲の中でできるだけ遅く打ち、それまでを不足量の大きい捜索で埋めます。追尾を捜索より常に優先するため、過負荷では捜索が大きく遅れます。この方式の「追尾更新の遅れ」は、許容範囲を超えた分だけを数えています。</li>
+    <li>ドウェルは割り込みなし。乱数系列は手法間で共通の種から生成しています。</li>
+  </ul>
+  <p class="note">着想元：Liu &amp; Layland (1973) の期限駆動スケジューリング、van Keuk &amp; Blackman (1993) のフェーズドアレイ追尾パラメータ制御、Orman ほか (1996) のMFRスケジューリング、Butler (1998) のタイムバランス方式、Smouse, Liu &amp; Sylvester (2020, Johns Hopkins APL Technical Digest 35(2)) の動的RSIスケジューリング。いずれも大幅に単純化しています。</p>
+</section>
+<footer>シミュレーションはすべてブラウザ内で実行されます。</footer>
+</main>
+<script src="engine.js"></script>
+<script src="micro.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
