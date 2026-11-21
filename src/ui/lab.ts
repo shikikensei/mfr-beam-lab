@@ -7,7 +7,7 @@ import type { ScenarioOptions } from '../engine/scenario.ts';
 import { simulate } from '../engine/simulate.ts';
 import { ms } from '../engine/types.ts';
 import type { Scenario, SimResult } from '../engine/types.ts';
-import { lineChart, stackChart } from './charts.ts';
+import { lineChart, scatterChart, stackChart } from './charts.ts';
 import type { StackData } from './charts.ts';
 import { LAB, labOf } from './text.ts';
 import type { LabId } from './text.ts';
@@ -25,7 +25,9 @@ const PRESETS: Preset[] = [
   { id: 'recover', label: '減って回復する', note: '目標36が20秒で現れ、40秒の時点で8つを残して消えます。あふれたあと、どう立ち直るかを見ます。', opt: { targets: 36, ramp: ms(20000), disappear: { at: ms(40000), keep: 8 } } },
 ];
 
-const state = { preset: 'sat', method: 'plus' as LabId, a: 'priority' as LabId, b: 'plus' as LabId, sel: 45, swSel: 24, timer: 0 };
+const state = { preset: 'sat', method: 'plus' as LabId, a: 'priority' as LabId, b: 'plus' as LabId, sel: 45, swSel: 24, timer: 0, keep: false };
+/** The one convention the reader can switch: does a late search beam keep its lateness? */
+const conv = (keep = state.keep) => ({ searchBacklog: keep ? Infinity : 0 });
 const presetOf = (): Preset => PRESETS.find((p) => p.id === state.preset)!;
 
 interface Run { sim: SimResult; per: StackData; sum: Summary }
@@ -36,10 +38,10 @@ function situation(): { sc: Scenario; demand: number[]; search: number } {
   if (!s) { const sc = makeScenario({ ...presetOf().opt, seed: SEED, duration: DURATION }), d = demandSeries(sc); s = { sc, demand: d.total, search: d.search }; scenarios.set(state.preset, s); }
   return s;
 }
-function run(id: LabId): Run {
-  const key = state.preset + '|' + id;
+function run(id: LabId, keep = state.keep): Run {
+  const key = [state.preset, id, keep].join('|');
   let r = runs.get(key);
-  if (!r) { const sim = simulate(situation().sc, { ...DEFAULT_CONFIG, ...labOf(id).cfg }); r = { sim, per: perSecond(sim), sum: summarize(sim) }; runs.set(key, r); }
+  if (!r) { const sim = simulate(situation().sc, { ...DEFAULT_CONFIG, ...labOf(id).cfg, conv: conv(keep) }); r = { sim, per: perSecond(sim), sum: summarize(sim) }; runs.set(key, r); }
   return r;
 }
 
@@ -123,13 +125,13 @@ const SWEEP_N = [4, 8, 12, 16, 20, 24, 28, 32, 36, 40];
 interface SweepPoint { n: number; search: number; drop: number; upper: number }
 let sweep: { key: string; a: SweepPoint[]; b: SweepPoint[]; full: number } | null = null;
 function sweepOf(): NonNullable<typeof sweep> {
-  const key = [state.preset, state.a, state.b].join('|');
+  const key = [state.preset, state.a, state.b, state.keep].join('|');
   if (sweep?.key === key) return sweep;
   const highFrac = presetOf().opt.highFrac;
   let full = 0;
   const line = (id: LabId): SweepPoint[] => SWEEP_N.map((n) => {
     const sc = makeScenario({ targets: n, seed: SEED, duration: ms(30000), highFrac });
-    const s = summarize(simulate(sc, { ...DEFAULT_CONFIG, ...labOf(id).cfg }));
+    const s = summarize(simulate(sc, { ...DEFAULT_CONFIG, ...labOf(id).cfg, conv: conv() }));
     return { n, search: s.share.search / demandSeries(sc).search, drop: s.fixed.requested ? s.fixed.dropped / s.fixed.requested : 0, upper: s.fixed.upperRequested ? s.fixed.upperDropped / s.fixed.upperRequested : 0 };
   });
   // the target count at which the wanted amount reaches 100 %, by linear interpolation
@@ -148,6 +150,17 @@ function drawCompare(): void {
       return `<tr><td>${tag ? `<b>${tag}</b>` : ''}${short(m.label)}</td><td>${pc(s.share.search / situation().search)}<small>${s.regions.map((g) => (g.served * 100).toFixed(0)).join('／')}</small></td>` +
         `<td>${pc(s.share.gap, 1)}</td><td>${s.fixed.dropped}</td><td>${s.fixed.upperDropped}</td></tr>`;
     }).join('') + '</tbody>';
+  const kb = $<HTMLSelectElement>('keep');
+  if (!kb.dataset.wired) { kb.dataset.wired = '1'; kb.addEventListener('change', () => { state.keep = kb.value === 'keep'; sweep = null; redraw(); }); }
+  kb.value = state.keep ? 'keep' : 'forget';
+  const dropShare = (s: Summary): number => (s.fixed.requested ? (s.fixed.dropped / s.fixed.requested) * 100 : 0);
+  scatterChart($('scatter'), {
+    label: '並べ方ごとの、捜索の実行率と固定タスクの取りこぼしの割合',
+    points: LAB.map((m) => {
+      const now = run(m.id).sum, other = run(m.id, !state.keep).sum, x = (s: Summary): number => (s.share.search / situation().search) * 100;
+      return { name: m.label.replace(/（.+）$/, '').replace('動的RSI＋先読み', '＋先読み').replace('固定テンプレート', 'テンプレート').replace('最早期限優先', '最早期限'), x: x(now), y: dropShare(now), fromX: x(other), fromY: dropShare(other) };
+    }),
+  });
   methodSelect('labA', 'a'); methodSelect('labB', 'b');
   const A = run(state.a), B = run(state.b), { demand } = situation(), k = state.sel;
   $('nameA').textContent = 'A　' + labOf(state.a).label; $('nameB').textContent = 'B　' + labOf(state.b).label;

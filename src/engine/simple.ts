@@ -4,7 +4,10 @@
 import { flexibleTaskDeficit } from './ftd.ts';
 import type { Box, Conventions, FixedRequest, GapCause, PlanView, Placement, Planner, Us } from './types.ts';
 
-export const DEFAULT_CONVENTIONS: Conventions = { searchGrace: 1, searchBacklog: Infinity, balanceBy: 'period' };
+// searchBacklog 0: a search beam that is behind counts as having just fallen due, so its lateness is
+// not carried along. This matches the dynamic RSI, whose deficit starts again with every frame, and
+// it does not make these schedulers look worse than they need to (docs/assumptions.md, section 11).
+export const DEFAULT_CONVENTIONS: Conventions = { searchGrace: 1, searchBacklog: 0, balanceBy: 'period' };
 
 interface Cand {
   fixed: FixedRequest | null;

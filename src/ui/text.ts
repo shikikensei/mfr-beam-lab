@@ -15,10 +15,10 @@ export type MethodId = keyof typeof METHODS;
 
 /** Every scheduler of chapters 2 and 3, in the order they are listed. `how` is the rule in one breath. */
 export const LAB = [
-  { id: 'fifo', label: '到着順', cfg: { scheduler: 'fifo' }, how: '用意ができた順に実行します。優先度も期限も見ません。' },
+  { id: 'fifo', label: '到着順', cfg: { scheduler: 'fifo' }, how: '用意ができた順に実行します。優先度も期限も見ません。捜索と固定タスクを同じ列に並べます。' },
   { id: 'template', label: '固定テンプレート', cfg: { scheduler: 'template' }, how: '100 ms の周期を、固定タスク用 40 % と捜索用 60 % にあらかじめ割ります。自分の枠が余っても、相手には貸しません。' },
   { id: 'priority', label: '固定優先度', cfg: { scheduler: 'priority' }, how: '優先度の高いものから実行します。固定タスクが常に先で、捜索は残った時間に入ります。捜索の中では水平線が先です。' },
-  { id: 'edf', label: '最早期限優先', cfg: { scheduler: 'edf' }, how: '終わらせるべき時刻がいちばん近いものから実行します。優先度は見ません。' },
+  { id: 'edf', label: '最早期限優先', cfg: { scheduler: 'edf' }, how: '終わらせるべき時刻がいちばん近いものから実行します。優先度は見ません。捜索ビームの期限をどう置くかで結果が変わります。' },
   { id: 'balance', label: 'タイムバランス', cfg: { scheduler: 'balance' }, how: '「遅れ ÷ 周期」がいちばん大きいものから実行します。遅れを全員で分け合う考え方です。' },
   { id: 'legacy', label: '従来型（固定長の箱）', cfg: { scheduler: 'legacy' }, how: '100 ms の箱に、固定タスクを要求時刻で置いてから、残りを捜索で埋めます。' },
   { id: 'paper', label: '動的RSI（論文の記述どおり）', cfg: { scheduler: 'drsi', protect: 'paper' }, how: '次の固定タスクまでを箱にし、後ろ寄せにしてから捜索を詰め、寄せて閉じます（1章）。' },

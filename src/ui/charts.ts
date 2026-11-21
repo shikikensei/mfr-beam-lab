@@ -78,3 +78,39 @@ export function lineChart(host: HTMLElement, o: { label: string; series: Series[
   svg.addEventListener('pointerdown', pick);
   svg.addEventListener('pointermove', (ev) => { if (ev.buttons || ev.pointerType === 'touch') pick(ev); });
 }
+
+export interface ScatterPoint { name: string; x: number; y: number; fromX: number; fromY: number }
+
+/**
+ * Search served (x) against fixed tasks dropped (y), one named point per scheduler. Names sit in a
+ * column on the right, in the vertical order of their points, joined by leader lines, so identity
+ * never depends on colour. A point that moved when the convention was switched trails a thin line
+ * from where it was (hollow mark).
+ */
+export function scatterChart(host: HTMLElement, o: { label: string; points: ScatterPoint[] }): void {
+  const W = host.clientWidth || 320, m = { l: 40, r: 100, t: 26, b: 34 }, rowH = 17, XMIN = 40;
+  const H = Math.max(230, m.t + m.b + o.points.length * rowH + 8);
+  const ymax = Math.max(10, Math.ceil(Math.max(...o.points.flatMap((p) => [p.y, p.fromY])) / 10) * 10);
+  const X = (v: number): number => m.l + ((Math.max(XMIN, Math.min(100, v)) - XMIN) / (100 - XMIN)) * (W - m.l - m.r);
+  const Y = (v: number): number => H - m.b - (v / ymax) * (H - m.t - m.b);
+  const t = (x: number, y: number, txt: string, anchor = 'middle', fill = '--muted', size = 11, fam = '--mono'): string =>
+    `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="var(${fill})" font-size="${size}" font-family="var(${fam})">${txt}</text>`;
+  let s = `<svg width="${W}" height="${H}" role="img" aria-label="${o.label}">`;
+  for (let v = 0; v <= ymax + 1e-9; v += ymax / (ymax > 30 ? 5 : 2)) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(${v === 0 ? '--axis' : '--line'})"/>` + t(m.l - 6, Y(v) + 4, `${v}%`, 'end');
+  for (let v = XMIN; v <= 100; v += 20) s += `<line x1="${X(v)}" x2="${X(v)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--line)"/>` + t(X(v), H - m.b + 14, `${v}%`);
+  s += t((m.l + W - m.r) / 2, H - 3, '捜索を実行できた割合（40 % から）→', 'middle', '--ink2', 11.5, '--font');
+  s += t(2, 12, '↑ 固定タスク：要求のうち取りこぼした割合', 'start', '--ink2', 11.5, '--font');
+  // label rows on the right, in the order of the points from top to bottom
+  const order = o.points.map((p, i) => ({ p, i })).sort((a, b) => b.p.y - a.p.y || b.p.x - a.p.x);
+  const y0 = Math.max(m.t + 8, Math.min(H - m.b - order.length * rowH + 8, (m.t + H - m.b) / 2 - (order.length * rowH) / 2 + 8));
+  order.forEach(({ p }, k) => {
+    const px = X(p.x), py = Y(p.y), ly = y0 + k * rowH, lx = W - m.r + 12;
+    if (Math.hypot(p.x - p.fromX, p.y - p.fromY) > 1.5) {
+      s += `<line x1="${X(p.fromX)}" y1="${Y(p.fromY)}" x2="${px}" y2="${py}" stroke="var(--muted)" stroke-dasharray="3 3"/>` +
+        `<circle cx="${X(p.fromX)}" cy="${Y(p.fromY)}" r="4" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>`;
+    }
+    s += `<path d="M${px} ${py}L${lx - 8} ${ly - 4}L${lx - 2} ${ly - 4}" fill="none" stroke="var(--axis)"/>` + t(lx, ly, p.name, 'start', '--ink', 12, '--font');
+  });
+  for (const p of o.points) s += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`;
+  host.innerHTML = s + '</svg>';
+}
